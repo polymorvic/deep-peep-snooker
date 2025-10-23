@@ -1,4 +1,5 @@
 import cv2
+import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from typing import Literal
@@ -120,3 +121,69 @@ def pipette_color(image: np.ndarray | NumpyImage) -> tuple[int, int, int]:
 #     binary_image = np.where(mask, 255, 0).astype(np.uint8)
     
 #     return binary_image
+
+
+def apply_hough_transformation(
+    img_gray: np.ndarray,
+    blur_kernel_size: int = 5,
+    canny_thresh_lower: int = 50,
+    canny_thresh_upper: int = 150,
+    hough_thresh: int = 100,
+    hough_min_line_len_percent: float = 0.2,
+    hough_max_line_gap: int = 10,
+) -> tuple[np.ndarray, list]:
+    """
+    Apply probabilistic Hough line transformation to a grayscale image.
+    
+    Process:
+        1. Apply Gaussian blur to reduce noise
+        2. Detect edges using Canny edge detection
+        3. Apply Hough line transformation to find straight lines
+        4. Draw detected lines on the original image
+    
+    Args:
+        img_gray: Input grayscale image
+        blur_kernel_size: Size of Gaussian blur kernel (default 5)
+        canny_thresh_lower: Lower threshold for Canny edge detection (default 50)
+        canny_thresh_upper: Upper threshold for Canny edge detection (default 150)
+        hough_thresh: Minimum votes to detect a line (default 100)
+        hough_min_line_len_percent: Minimum line length as percentage of image height (default 0.1)
+        hough_max_line_gap: Maximum gap between line segments (default 10)
+        
+    Returns:
+        Tuple containing:
+            - Image with detected lines drawn
+            - List of detected lines (each line as [x1, y1, x2, y2])
+            
+    Raises:
+        ValueError: If input image is not grayscale
+    """
+    if img_gray.ndim != 2:
+        raise ValueError("Input image must be grayscale (2D array)")
+    
+    hough_min_line_len = int(img_gray.shape[0] * hough_min_line_len_percent)
+    
+    blurred = cv2.GaussianBlur(img_gray, (blur_kernel_size, blur_kernel_size), 0)
+    edges = cv2.Canny(blurred, canny_thresh_lower, canny_thresh_upper)
+    
+    lines = cv2.HoughLinesP(
+        edges, 
+        1, 
+        np.pi / 180, 
+        threshold=hough_thresh, 
+        minLineLength=hough_min_line_len, 
+        maxLineGap=hough_max_line_gap
+    )
+    
+    if lines is None:
+        return cv2.cvtColor(img_gray.copy(), cv2.COLOR_GRAY2RGB), []
+    
+    result_img = cv2.cvtColor(img_gray.copy(), cv2.COLOR_GRAY2RGB)
+    detected_lines = []
+    
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        cv2.line(result_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+        detected_lines.append([x1, y1, x2, y2])
+    
+    return result_img, detected_lines
