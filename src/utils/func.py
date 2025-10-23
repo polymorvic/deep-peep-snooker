@@ -29,7 +29,17 @@ def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarr
 def read_image_as_numpyimage(path: str | Path, color_mode: Literal["rgb", "hsv", "grayscale"] = "rgb") -> NumpyImage:
     """
     Read an image and return it as a NumpyImage instance.
-    color_mode: 'rgb', 'hsv', or 'grayscale'.
+    
+    Args:
+        path: Path to the image file
+        color_mode: Color mode for the image - 'rgb', 'hsv', or 'grayscale' (default 'rgb')
+        
+    Returns:
+        NumpyImage instance containing the loaded image
+        
+    Raises:
+        ValueError: If color_mode is not 'rgb', 'hsv', or 'grayscale'
+        FileNotFoundError: If the image file cannot be read
     """
     color_mode = color_mode.lower()
     if color_mode not in {"rgb", "hsv", "grayscale"}:
@@ -74,4 +84,39 @@ def pipette_color(image: np.ndarray | NumpyImage) -> tuple[int, int, int]:
     _, _, centers = cv2.kmeans(pixels, 1, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
     return  tuple(map(int, centers[0]))
 
+# def binarize_by_color(image: np.ndarray | NumpyImage, target_color: tuple[int, int, int], 
+#                      tolerance: int = 1) -> np.ndarray:
+#     """
+#     Binarize an image based on a target HSV color with tolerance.
+    
+#     Args:
+#         image: Input image as numpy array or NumpyImage (must be in HSV format)
+#         target_color: Target color as (H,S,V) tuple
+#         tolerance: Color tolerance for matching (default 1)
+        
+#     Returns:
+#         Binary image as numpy array (0s and 255s)
+        
+#     Raises:
+#         ValueError: If image is grayscale or doesn't have 3 channels
+#     """
+#     if image.ndim == 2:
+#         raise ValueError("Image must be color (3 channels), not grayscale")
+    
+#     if image.ndim == 3 and image.shape[2] != 3:
+#         raise ValueError("Image must have exactly 3 channels for color processing")
+    
 
+#     tolerance = int(tolerance)
+#     target = np.array(target_color, dtype=np.uint8)
+    
+#     h_diff = np.abs(image[..., 0].astype(np.int16) - target[0])
+#     h_diff = np.minimum(h_diff, 180 - h_diff) 
+    
+#     mask = (h_diff <= tolerance) & \
+#            (np.abs(image[..., 1].astype(np.int16) - target[1]) <= tolerance) & \
+#            (np.abs(image[..., 2].astype(np.int16) - target[2]) <= tolerance)
+    
+#     binary_image = np.where(mask, 255, 0).astype(np.uint8)
+    
+#     return binary_image
