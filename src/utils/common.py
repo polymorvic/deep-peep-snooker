@@ -1,10 +1,12 @@
+from abc import ABC, abstractmethod
+from collections.abc import Hashable as SupportsHash
+
 import numpy as np
 
 
 class NumpyImage(np.ndarray):
     """
     A lightweight wrapper around `numpy.ndarray` for easier image shape handling.
-
 
     Provides convenient properties to access image dimensions:
     - `height`: number of rows
@@ -33,3 +35,17 @@ class NumpyImage(np.ndarray):
     def as_array(self):
         """Convert back to regular numpy array for compatibility"""
         return np.asarray(self)
+
+
+class Hashable(ABC):
+    @abstractmethod
+    def _key_(self) -> SupportsHash:
+        raise NotImplementedError
+
+    def __hash__(self) -> int:
+        return hash(self._key_())
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, self.__class__):
+            return False
+        return self._key_() == other._key_()
