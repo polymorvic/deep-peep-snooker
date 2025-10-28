@@ -6,7 +6,7 @@ from .common import Hashable
 
 if TYPE_CHECKING:
     from .lines import Line
-    from .point import Point
+    from .points import Point
 
 
 class Intersection(Hashable):
