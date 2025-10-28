@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Literal
 
 from .common import NumpyImage
+from .lines import Line, LineGroup
+
 
 def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarray | NumpyImage:
     """
@@ -85,64 +87,97 @@ def pipette_color(image: np.ndarray | NumpyImage) -> tuple[int, int, int]:
     _, _, centers = cv2.kmeans(pixels, 1, None, criteria, 10, cv2.KMEANS_RANDOM_CENTERS)
     return  tuple(map(int, centers[0]))
 
-# def binarize_by_color(image: np.ndarray | NumpyImage, target_color: tuple[int, int, int], 
-#                      tolerance: int = 1) -> np.ndarray:
-#     """
-#     Binarize an image based on a target HSV color with tolerance.
+
+def _convert_to_grayscale(img: np.ndarray) -> np.ndarray:
+    """
+    Convert image to grayscale if needed.
     
-#     Args:
-#         image: Input image as numpy array or NumpyImage (must be in HSV format)
-#         target_color: Target color as (H,S,V) tuple
-#         tolerance: Color tolerance for matching (default 1)
+    Args:
+        img: Input image (grayscale or color)
         
-#     Returns:
-#         Binary image as numpy array (0s and 255s)
+    Returns:
+        Grayscale image as 2D numpy array
         
-#     Raises:
-#         ValueError: If image is grayscale or doesn't have 3 channels
-#     """
-#     if image.ndim == 2:
-#         raise ValueError("Image must be color (3 channels), not grayscale")
-    
-#     if image.ndim == 3 and image.shape[2] != 3:
-#         raise ValueError("Image must have exactly 3 channels for color processing")
-    
-
-#     tolerance = int(tolerance)
-#     target = np.array(target_color, dtype=np.uint8)
-    
-#     h_diff = np.abs(image[..., 0].astype(np.int16) - target[0])
-#     h_diff = np.minimum(h_diff, 180 - h_diff) 
-    
-#     mask = (h_diff <= tolerance) & \
-#            (np.abs(image[..., 1].astype(np.int16) - target[1]) <= tolerance) & \
-#            (np.abs(image[..., 2].astype(np.int16) - target[2]) <= tolerance)
-    
-#     binary_image = np.where(mask, 255, 0).astype(np.uint8)
-    
-#     return binary_image
+    Raises:
+        ValueError: If input image has invalid dimensions
+    """
+    if img.ndim == 3:
+        return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    elif img.ndim == 2:
+        return img.copy()
+    else:
+        raise ValueError("Input image must be 2D (grayscale) or 3D (color)")
 
 
-def apply_hough_transformation(
-    img_gray: np.ndarray,
+def _convert_hough_segments_to_lines(hough_lines: np.ndarray | None) -> list[Line]:
+    """
+    Convert Hough line segments to Line objects.
+    
+    Args:
+        hough_lines: Array of line segments from cv2.HoughLinesP, 
+                    where each line is [[x1, y1, x2, y2]], or None if no lines detected
+        
+    Returns:
+        List of Line objects converted from the segments
+    """
+    if hough_lines is None:
+        return []
+    
+    line_objects = []
+    for line in hough_lines:
+        x1, y1, x2, y2 = line[0]
+        line_obj = Line.from_hough_line((x1, y1, x2, y2))
+        line_objects.append(line_obj)
+    return line_objects
+
+
+def group_lines(
+    lines: list[Line], thresh_theta: float | int = 5, thresh_intercept: float | int = 10
+) -> list[LineGroup]:
+    """
+    Group similar Line objects into LineGroups based on orientation and position thresholds.
+
+    Args:
+        lines (list[Line]): A list of Line objects to group.
+        thresh_theta (float): Maximum allowed angle difference between lines to be in the same group.
+        thresh_intercept (float): Maximum allowed intercept difference (for non-vertical lines).
+
+    Returns:
+        list[LineGroup]: A list of LineGroup objects representing grouped lines.
+    """
+    groups = []
+
+    for line in lines:
+        for group in groups:
+            if group.process_line(line, thresh_theta, thresh_intercept):
+                break
+        else:
+            groups.append(LineGroup([line]))
+
+    return groups
+
+
+def apply_pht(
+    img: np.ndarray,
     blur_kernel_size: int = 5,
-    canny_thresh_lower: int = 50,
-    canny_thresh_upper: int = 150,
-    hough_thresh: int = 100,
-    hough_min_line_len_percent: float = 0.2,
+    canny_thresh_lower: int = 30,
+    canny_thresh_upper: int = 70,
+    hough_thresh: int = 150,
+    hough_min_line_len_percent: float = 0.4,
     hough_max_line_gap: int = 10,
 ) -> tuple[np.ndarray, list]:
     """
-    Apply probabilistic Hough line transformation to a grayscale image.
+    Apply probabilistic Hough line transformation to an image.
     
     Process:
-        1. Apply Gaussian blur to reduce noise
-        2. Detect edges using Canny edge detection
-        3. Apply Hough line transformation to find straight lines
-        4. Draw detected lines on the original image
+        1. Convert to grayscale if needed
+        2. Apply Gaussian blur to reduce noise
+        3. Detect edges using Canny edge detection
+        4. Apply Hough line transformation to find straight lines
+        5. Draw detected lines on the original image
     
     Args:
-        img_gray: Input grayscale image
+        img: Input image (grayscale or color)
         blur_kernel_size: Size of Gaussian blur kernel (default 5)
         canny_thresh_lower: Lower threshold for Canny edge detection (default 50)
         canny_thresh_upper: Upper threshold for Canny edge detection (default 150)
@@ -153,20 +188,16 @@ def apply_hough_transformation(
     Returns:
         Tuple containing:
             - Image with detected lines drawn
-            - List of detected lines (each line as [x1, y1, x2, y2])
-            
-    Raises:
-        ValueError: If input image is not grayscale
+            - List of Line objects converted from detected line segments
     """
-    if img_gray.ndim != 2:
-        raise ValueError("Input image must be grayscale (2D array)")
+    img_gray = _convert_to_grayscale(img)
     
     hough_min_line_len = int(img_gray.shape[0] * hough_min_line_len_percent)
+
+    img_gray = 255 - img_gray
+    edges = cv2.Canny(img_gray, canny_thresh_lower, canny_thresh_upper)
     
-    blurred = cv2.GaussianBlur(img_gray, (blur_kernel_size, blur_kernel_size), 0)
-    edges = cv2.Canny(blurred, canny_thresh_lower, canny_thresh_upper)
-    
-    lines = cv2.HoughLinesP(
+    segments = cv2.HoughLinesP(
         edges, 
         1, 
         np.pi / 180, 
@@ -174,16 +205,15 @@ def apply_hough_transformation(
         minLineLength=hough_min_line_len, 
         maxLineGap=hough_max_line_gap
     )
+    lines = _convert_hough_segments_to_lines(segments)
     
-    if lines is None:
-        return cv2.cvtColor(img_gray.copy(), cv2.COLOR_GRAY2RGB), []
+    segments_img = cv2.cvtColor(img_gray.copy(), cv2.COLOR_GRAY2RGB)
+    lines_img = segments_img.copy()
+    if segments is not None:
+        for segment, line in zip(segments, lines):
+            x1, y1, x2, y2 = segment[0]
+            pts = line.limit_to_img(lines_img)
+            cv2.line(segments_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            cv2.line(lines_img, *pts, (255, 0, 0), 2)
     
-    result_img = cv2.cvtColor(img_gray.copy(), cv2.COLOR_GRAY2RGB)
-    detected_lines = []
-    
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        cv2.line(result_img, (x1, y1), (x2, y2), (255, 0, 0), 2)
-        detected_lines.append([x1, y1, x2, y2])
-    
-    return result_img, detected_lines
+    return segments_img, lines_img, lines
