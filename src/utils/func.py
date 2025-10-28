@@ -7,6 +7,8 @@ from typing import Literal
 from .common import NumpyImage
 from .lines import Line, LineGroup
 
+type array_like = np.ndarray | NumpyImage
+
 
 def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarray | NumpyImage:
     """
@@ -159,7 +161,6 @@ def group_lines(
 
 def apply_pht(
     img: np.ndarray,
-    blur_kernel_size: int = 5,
     canny_thresh_lower: int = 30,
     canny_thresh_upper: int = 70,
     hough_thresh: int = 150,
@@ -217,3 +218,101 @@ def apply_pht(
             cv2.line(lines_img, *pts, (255, 0, 0), 2)
     
     return segments_img, lines_img, lines
+
+
+def binarize_playfield(img: np.ndarray | NumpyImage) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Binarize an image to isolate the playfield area using color-based segmentation.
+    
+    The function detects the dominant color in the center of the image and creates
+    binary masks based on that color. It uses HSV color space for more robust color
+    detection and calculates dynamic tolerance thresholds based on color variance.
+    
+    Process:
+        1. Convert image to HSV color space
+        2. Crop the center region of the image to analyze dominant color
+        3. Detect dominant color using KMeans clustering
+        4. Calculate dynamic tolerance based on color variance
+        5. Create binary mask using cv2.inRange with calculated thresholds
+        6. Generate inverted binary image
+    
+    Args:
+        img: Input image as RGB numpy array or NumpyImage
+    
+    Returns:
+        Tuple containing two binary masks:
+            - binary_mask: Binary mask where white pixels represent the detected playfield color
+            - inv_binary_img: Inverted binary mask (black pixels represent detected color)
+    
+    Note:
+        The tolerance for color matching is dynamically calculated as 1.5x the standard
+        deviation of each HSV channel, allowing for variation in lighting and shadows.
+    """
+    img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+    cropped_img_hsv = crop_center(img_hsv)
+
+    dominant_color = pipette_color(cropped_img_hsv)
+
+    h, s, v = dominant_color
+    h_std = np.std(cropped_img_hsv[:, :, 0])
+    s_std = np.std(cropped_img_hsv[:, :, 1])
+    v_std = np.std(cropped_img_hsv[:, :, 2])
+
+    h_tolerance = int(h_std * 1.5)
+    s_tolerance = int(s_std * 1.5)
+    v_tolerance = int(v_std * 1.5)
+
+    lower_bound = np.array([max(0, h - h_tolerance), 
+                        max(0, s - s_tolerance), 
+                        max(0, v - v_tolerance)])
+
+    upper_bound = np.array([min(179, h + h_tolerance), 
+                        min(255, s + s_tolerance), 
+                        min(255, v + v_tolerance)])
+
+    binary_mask = cv2.inRange(img_hsv, lower_bound, upper_bound)
+    inv_binary_img = cv2.bitwise_not(binary_mask)
+
+    return binary_mask, inv_binary_img
+
+
+def find_playfield_exteral_borders(
+    original_img: array_like,
+    binary_mask: array_like, 
+    kernel_size: tuple[int, int] = (21, 21), 
+    canny_thresh_lower: int = 150, 
+    canny_thresh_upper: int = 200, 
+    hough_thresh: int = 100, 
+    hough_min_line_len: int = 100, 
+    hough_max_line_gap: int = 10,
+    group_lines_thresh_intercept: int = 100) -> tuple[array_like, array_like]:
+
+    binary_mask_close = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, np.ones(kernel_size, np.uint8))
+    edges = cv2.Canny(binary_mask_close, canny_thresh_lower, canny_thresh_upper)
+    segments = cv2.HoughLinesP(
+        edges, 
+        1, 
+        np.pi / 180, 
+        threshold=hough_thresh, 
+        minLineLength=hough_min_line_len, 
+        maxLineGap=hough_max_line_gap
+    )
+
+    lines = _convert_hough_segments_to_lines(segments)
+    lines = group_lines(lines, thresh_intercept=group_lines_thresh_intercept)
+
+    intersections = set()
+    for group1 in lines:
+        for group2 in lines:
+            intersection = group1.intersection(group2, binary_mask)
+            if intersection is not None:
+                intersections.add(intersection)
+
+    pic_copy = original_img.copy()
+    for intersection, line in zip(intersections, lines):
+        pt = intersection.point.as_int()
+        end_pts = line.limit_to_img(pic_copy)
+        cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
+        cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
+                
+    return list(intersections), lines, pic_copy
