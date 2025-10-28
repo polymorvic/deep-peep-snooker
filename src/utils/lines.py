@@ -4,8 +4,8 @@ from typing import Literal, Self
 import numpy as np
 
 from .common import Hashable
-from .intersection import Intersection
-from .point import Point
+from .intersections import Intersection
+from .points import Point
 
 type numeric = int | float
 
