@@ -4,11 +4,10 @@ import numpy as np
 from pathlib import Path
 from typing import Literal
 
-from .common import NumpyImage
+from .common import array_like, NumpyImage
 from .lines import Line, LineGroup
-from .intersections import Intersection
-
-type array_like = np.ndarray | NumpyImage
+from .intersections import Intersection, compute_intersections
+from .points import Point
 
 
 def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarray | NumpyImage:
@@ -134,9 +133,10 @@ def _convert_hough_segments_to_lines(hough_lines: np.ndarray | None) -> list[Lin
     return line_objects
 
 
-def group_lines(
-    lines: list[Line], thresh_theta: float | int = 5, thresh_intercept: float | int = 10
-) -> list[LineGroup]:
+def group_lines(lines: list[Line], 
+    thresh_theta: float | int = 5, 
+    thresh_intercept: float | int = 10
+    ) -> list[LineGroup]:
     """
     Group similar Line objects into LineGroups based on orientation and position thresholds.
 
@@ -167,7 +167,7 @@ def apply_pht(
     hough_thresh: int = 150,
     hough_min_line_len_percent: float = 0.4,
     hough_max_line_gap: int = 10,
-) -> tuple[np.ndarray, list]:
+    ) -> tuple[np.ndarray, list]:
     """
     Apply probabilistic Hough line transformation to an image.
     
@@ -337,13 +337,7 @@ def find_playfield_exteral_borders(
 
     lines = _convert_hough_segments_to_lines(segments)
     lines = group_lines(lines, thresh_intercept=group_lines_thresh_intercept)
-
-    intersections = set()
-    for group1 in lines:
-        for group2 in lines:
-            intersection = group1.intersection(group2, binary_mask)
-            if intersection is not None:
-                intersections.add(intersection)
+    intersections = compute_intersections(lines, binary_mask)
 
     pic_copy = original_img.copy()
     for intersection, line in zip(intersections, lines):
@@ -352,7 +346,7 @@ def find_playfield_exteral_borders(
         cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
         cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
                 
-    return list(intersections), lines, pic_copy
+    return intersections, lines, pic_copy
 
 
 def blackout_pixels_outside_borders(
@@ -360,7 +354,7 @@ def blackout_pixels_outside_borders(
     inv_binary_img: array_like,
     lines: list[LineGroup],
     line_buffer_distance: int = 5
-) -> array_like:
+    ) -> array_like:
     """
     Convert white pixels to black outside of the external playfield borders.
     
@@ -400,3 +394,68 @@ def blackout_pixels_outside_borders(
             cv2.line(mask, (int(pt1.x), int(pt1.y)), (int(pt2.x), int(pt2.y)), 0, line_buffer_distance * 2)
 
     return cv2.bitwise_and(inv_binary_img, mask)
+
+
+def find_playfield_internal_sideline_borders(
+    original_img: array_like, 
+    blackout_img: array_like, 
+    hough_thresh: int = 100, 
+    hough_min_line_len: int = 100, 
+    hough_max_line_gap: int = 10,
+    thresh_theta: float | int = 50,
+    thresh_intercept: float | int = 200,
+    slope_threshold: float = 0.1
+    ) -> tuple[list[LineGroup], array_like]:
+    """
+    Find internal sideline borders of a playfield by detecting line segments.
+    
+    The function processes a blackout image (where playfield area has been isolated)
+    to detect internal sideline borders using probabilistic Hough line transformation.
+    It filters and groups similar lines to identify the main sideline borders.
+    
+    Process:
+        1. Apply probabilistic Hough line transformation to detect line segments
+        2. Filter lines based on slope threshold (keep vertical or high-slope lines)
+        3. Group similar lines together based on angle and intercept thresholds
+        4. Create visualization with detected border lines
+    
+    Args:
+        original_img: Original RGB image for visualization
+        blackout_img: Binary image with isolated playfield (white pixels represent playfield)
+        hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
+        hough_min_line_len: Minimum line length in pixels (default 100)
+        hough_max_line_gap: Maximum gap between line segments to connect (default 10)
+        thresh_theta: Angle threshold for grouping similar lines in degrees (default 50)
+        thresh_intercept: Intercept threshold for grouping similar lines (default 200)
+        slope_threshold: Minimum slope magnitude to keep a line (default 0.1)
+                          Lines with None slope (vertical) or abs(slope) >= threshold are kept
+    
+    Returns:
+        Tuple containing:
+            - list[LineGroup]: List of grouped line objects representing detected sideline borders
+            - array_like: Visualization image with border lines drawn in red
+    
+    Note:
+        The function is designed to detect internal sidelines, which are typically vertical
+        or nearly vertical lines. The slope_threshold parameter filters out near-horizontal
+        lines that are not relevant for sideline detection.
+    """
+    segments = cv2.HoughLinesP(
+        blackout_img, 
+        1, 
+        np.pi / 180, 
+        threshold=hough_thresh, 
+        minLineLength=hough_min_line_len, 
+        maxLineGap=hough_max_line_gap
+    )
+
+    lines = _convert_hough_segments_to_lines(segments)
+    lines = [line for line in lines if line.slope is None or abs(line.slope) >= slope_threshold]
+    lines = group_lines(lines, thresh_theta=thresh_theta, thresh_intercept=thresh_intercept)
+
+    pic_copy = original_img.copy()
+    for line in lines:
+        end_pts = line.limit_to_img(pic_copy)
+        cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
+
+    return lines, pic_copy
