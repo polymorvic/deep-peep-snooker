@@ -6,6 +6,7 @@ from typing import Literal
 
 from .common import NumpyImage
 from .lines import Line, LineGroup
+from .intersections import Intersection
 
 type array_like = np.ndarray | NumpyImage
 
@@ -285,8 +286,44 @@ def find_playfield_exteral_borders(
     hough_thresh: int = 100, 
     hough_min_line_len: int = 100, 
     hough_max_line_gap: int = 10,
-    group_lines_thresh_intercept: int = 100) -> tuple[array_like, array_like]:
-
+    group_lines_thresh_intercept: int = 100) -> tuple[list[Intersection], list[LineGroup], array_like]:
+    """
+    Find external borders of a playfield by detecting lines and their intersections.
+    
+    The function processes a binary mask to detect straight line segments using
+    morphological operations, Canny edge detection, and Hough line transformation.
+    It groups similar lines and finds their intersection points to define the
+    playfield boundaries.
+    
+    Process:
+        1. Apply morphological close operation to fill gaps in the binary mask
+        2. Detect edges using Canny edge detection
+        3. Find line segments using probabilistic Hough line transformation
+        4. Group similar lines together
+        5. Calculate intersection points between all pairs of line groups
+        6. Create visualization with lines and intersection points
+    
+    Args:
+        original_img: Original RGB image for visualization
+        binary_mask: Binary mask image to process
+        kernel_size: Size of the morphological kernel for closing operation (default (21, 21))
+        canny_thresh_lower: Lower threshold for Canny edge detection (default 150)
+        canny_thresh_upper: Upper threshold for Canny edge detection (default 200)
+        hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
+        hough_min_line_len: Minimum line length in pixels (default 100)
+        hough_max_line_gap: Maximum gap between line segments to connect (default 10)
+        group_lines_thresh_intercept: Maximum intercept difference to group lines (default 100)
+    
+    Returns:
+        Tuple containing:
+            - list[Intersection]: List of intersection points between line groups
+            - list[LineGroup]: List of grouped line objects representing detected borders
+            - array_like: Visualization image with lines drawn in blue and intersection points in red
+    
+    Note:
+        The function expects a binary mask where white pixels represent the area to analyze.
+        Intersection points and line groups can be used to reconstruct the playfield boundary.
+    """
     binary_mask_close = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, np.ones(kernel_size, np.uint8))
     edges = cv2.Canny(binary_mask_close, canny_thresh_lower, canny_thresh_upper)
     segments = cv2.HoughLinesP(
@@ -316,3 +353,50 @@ def find_playfield_exteral_borders(
         cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
                 
     return list(intersections), lines, pic_copy
+
+
+def blackout_pixels_outside_borders(
+    intersections: list[Intersection],
+    inv_binary_img: array_like,
+    lines: list[LineGroup],
+    line_buffer_distance: int = 5
+) -> array_like:
+    """
+    Convert white pixels to black outside of the external playfield borders.
+    
+    Makes white pixels to black outside external borders. The function uses a two-step masking approach to isolate the playfield:
+    1. Creates a convex hull from intersection points to define the main playfield area
+    2. Applies line-based masking to black out a buffer zone on the opposite side of detected lines
+    
+    This approach helps isolate the actual playfield area by removing areas outside the detected
+    borders while accounting for line detection artifacts.
+    
+    Args:
+        intersections: List of Intersection objects representing corners/boundary points of the playfield
+        inv_binary_img: Inverted binary image where detected playfield color is black
+        lines: List of LineGroup objects representing detected border lines
+        line_buffer_distance: Distance in pixels to black out on the opposite side of lines (default 5)
+    
+    Returns:
+        Binary image with white pixels converted to black outside the playfield borders
+    
+    Note:
+        The function draws black lines with thickness `line_buffer_distance * 2` to create a buffer
+        zone around detected lines, effectively masking out areas on the opposite side of the lines.
+        This helps remove artifacts and isolate the actual playfield area.
+    """
+    intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in intersections])
+    hull = cv2.convexHull(intersection_points)
+
+    height, width = inv_binary_img.shape
+    mask = np.zeros((height, width), dtype=np.uint8)
+
+    cv2.fillPoly(mask, [hull], 255)
+
+    for line in lines:
+        pts = line.limit_to_img(mask)
+        if pts:
+            pt1, pt2 = pts
+            cv2.line(mask, (int(pt1.x), int(pt1.y)), (int(pt2.x), int(pt2.y)), 0, line_buffer_distance * 2)
+
+    return cv2.bitwise_and(inv_binary_img, mask)
