@@ -19,3 +19,6 @@ pics/
 *jpg
 *.jpeg
 *.webp
+
+
+.DS_Store
