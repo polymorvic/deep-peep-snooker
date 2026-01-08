@@ -5,7 +5,7 @@ import numpy as np
 from .func import (binarize_playfield,
     find_playfield_exteral_borders, 
     blackout_pixels_outside_borders,
-    find_playfield_internal_sideline_borders, find_top_internal_cushion)
+    find_playfield_internal_sideline_borders, find_top_internal_cushion, crop_image_by_points, find_baulk_line)
 from .lines import Line
 from .points import Point
 
@@ -69,6 +69,7 @@ class PlayfieldFinder:
         blackout_img = blackout_pixels_outside_borders(external_intersections, inv_binary_img, external_lines)
         return find_playfield_internal_sideline_borders(blackout_img)
 
+
     def find_top_internal_cushion(self) -> Line | None:
         """
         Find the top internal cushion of the playfield.
@@ -101,4 +102,21 @@ class PlayfieldFinder:
         external_intersections, external_lines, _ = find_playfield_exteral_borders(self.img, binary_mask)
         blackout_img = blackout_pixels_outside_borders(external_intersections, inv_binary_img, external_lines)
         return find_top_internal_cushion(blackout_img)
+
+
+    def find_baulk_line(self) -> Line | None:
+        """
+        Find the baulk line of the playfield.
+        
+        Detects the baulk line by processing the image to isolate the playfield area
+        and selecting the near-horizontal line with intercept closest to the center.
+        
+        Returns:
+            Line | None: Line object representing the baulk line in global coordinates,
+                        or None if no suitable line is found
+        """
+        binary_mask, _ = binarize_playfield(self.img) 
+        external_intersections, _, _ = find_playfield_exteral_borders(self.img, binary_mask)
+        intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in external_intersections])
+        return find_baulk_line(self.img, intersection_points)
 

@@ -570,6 +570,67 @@ def find_top_internal_cushion(
         return None
 
 
+def find_baulk_line(
+    original_image: array_like,
+    intersection_points: np.ndarray,
+    hough_thresh: int = 100,
+    hough_min_line_len: int = 200,
+    hough_max_line_gap: int = 10,
+    ) -> Line | None:
+    """
+    Find the baulk line in a cropped playfield image.
+    
+    Detects near-horizontal lines using Hough transform and selects the one
+    with intercept closest to the image center.
+    
+    Args:
+        original_image: Input image as RGB numpy array or NumpyImage
+        intersection_points: Array of intersection points used to crop the image
+        hough_thresh: Minimum votes to detect a line (default: 100)
+        hough_min_line_len: Minimum line length in pixels (default: 200)
+        hough_max_line_gap: Maximum gap between line segments (default: 10)
+    
+    Returns:
+        Line | None: Line object representing the baulk line in global coordinates,
+                    or None if no suitable line is found
+    """
+    cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
+
+    hsv_img = cv2.cvtColor(cropped_by_points, cv2.COLOR_RGB2HSV)
+    _, _, v = cv2.split(hsv_img)
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    v_eq = clahe.apply(v)
+
+    edges = cv2.Canny(v_eq, 50, 150)
+    segments = cv2.HoughLinesP(
+        edges,
+        rho=1,
+        theta=np.pi/180,
+        threshold=hough_thresh,
+        minLineLength=hough_min_line_len,
+        maxLineGap=hough_max_line_gap
+    )
+
+    if segments is not None:
+        lines = _convert_hough_segments_to_lines(segments)
+        lines = [line for line in lines if abs(line.slope) < 2]
+
+        if lines:
+            lines = group_lines(lines, thresh_theta=50, thresh_intercept=10)
+            lines = sorted(lines, key=lambda line: line.intercept)
+
+            center_y = cropped_by_points.height / 2
+            baulk_line_local = min(lines, key=lambda line: abs(line.intercept - center_y))
+            baulk_line_global = transform_line(baulk_line_local, original_image, x_start, y_start)
+
+            return baulk_line_global
+        else:
+            return None
+    else:
+        return None
+
+
 def transform_point(
     point: Intersection | Point, 
     original_x_start: int, 
