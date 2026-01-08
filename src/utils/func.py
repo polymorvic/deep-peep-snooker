@@ -1,8 +1,9 @@
+from ctypes import pointer
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Iterable
 
 from .common import array_like, NumpyImage
 from .lines import Line, LineGroup
@@ -29,6 +30,48 @@ def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarr
     y, x = h // 2, w // 2
     r = s // 2
     return arr[y - r:y + r, x - r:x + r]
+
+
+def crop_image_by_points(
+    img: np.ndarray | NumpyImage,
+    points: np.ndarray[int] | list[Point] | list[Intersection]
+    ) -> tuple[np.ndarray | NumpyImage, int, int]:
+    """
+    Crop an image to a bounding box defined by a set of points.
+    
+    The function calculates the bounding box from the provided points and crops
+    the image to that region. Returns the cropped image and the origin offset
+    coordinates (x_start, y_start) that can be used with transform_line to
+    convert coordinates between local (cropped) and global (original) reference frames.
+    
+    Args:
+        img: Input image as numpy array or NumpyImage
+        points: Array of points as numpy array with shape (N, 2) where each row is [x, y],
+                or list of Point objects, or list of Intersection objects
+    
+    Returns:
+        Tuple containing:
+            - Cropped image as numpy array or NumpyImage
+            - x_start (int): X-axis offset of the cropped region in the original image
+            - y_start (int): Y-axis offset of the cropped region in the original image
+    
+    Raises:
+        ValueError: If points array is empty or has invalid shape
+    """
+    min_x = int(np.min(points[:, 0]))
+    max_x = int(np.max(points[:, 0]))
+    min_y = int(np.min(points[:, 1]))
+    max_y = int(np.max(points[:, 1]))
+    
+    img_height, img_width = img.height, img.width
+
+    x_start = max(min_x, 0)
+    y_start = max(min_y, 0)
+    
+    end_x = min(img_width, max_x + 1)
+    end_y = min(img_height, max_y + 1)
+
+    return img[y_start:end_y, x_start:end_x], x_start, y_start
 
 
 def read_image_as_numpyimage(path: str | Path, color_mode: Literal["rgb", "hsv", "grayscale"] = "rgb") -> NumpyImage:
@@ -477,7 +520,7 @@ def find_top_internal_cushion(
     hough_thresh: int = 100,
     hough_min_line_len: int = 200,
     hough_max_line_gap: int = 10,
-) -> Line | None:
+    ) -> Line | None:
     """
     Find the top internal cushion of a playfield by detecting horizontal line segments.
     
@@ -525,3 +568,86 @@ def find_top_internal_cushion(
         return lines[0]
     else:
         return None
+
+
+def transform_point(
+    point: Intersection | Point, 
+    original_x_start: int, 
+    original_y_start: int, 
+    to_global: bool = True
+    ) -> Point:
+    """
+    Transforms a point's coordinates between local and global image reference frames.
+
+    The function shifts a point by the provided (x, y) offsets depending on the
+    transformation direction. Works with both `Point` and `Intersection` objects.
+
+    Args:
+        point (Intersection | Point): Point or intersection to transform.
+        original_x_start (int): X-axis offset.
+        original_y_start (int): Y-axis offset.
+        to_global (bool, optional): If True, converts from local to global coordinates;
+                                    if False, converts from global to local (default: True).
+
+    Returns:
+        Point: Transformed point with updated coordinates.
+    """
+    if isinstance(point, Intersection):
+        point = point.point
+
+    if to_global:
+        return Point(point.x + original_x_start, point.y + original_y_start)
+    else:
+        return Point(point.x - original_x_start, point.y - original_y_start)
+
+
+def transform_line(
+    original_line: Line, 
+    original_img: np.ndarray, 
+    original_x_start: int, 
+    original_y_start: int, 
+    to_global: bool = True
+    ) -> Line:
+    """
+    Transforms a line's coordinates between local and global image reference frames.
+
+    The function shifts both endpoints of a line by the provided offsets using
+    `transform_point` and reconstructs a new line from the transformed coordinates.
+
+    Args:
+        original_line (Line): Line object to transform.
+        original_img (np.ndarray): Image used to determine line limits.
+        original_x_start (int): X-axis offset.
+        original_y_start (int): Y-axis offset.
+        to_global (bool, optional): If True, converts from local to global coordinates;
+                                    if False, converts from global to local (default: True).
+
+    Returns:
+        Line: Transformed line object with updated coordinates.
+    """
+    pts_source: Iterable[Point] = original_line.limit_to_img(original_img)
+    pts_transformed = [transform_point(p, original_x_start, original_y_start, to_global=to_global) for p in pts_source]
+    return Line.from_points(*pts_transformed)
+
+
+def transform_intersection(
+    intersection: Intersection,
+    source_img: np.ndarray,
+    original_x_start: int,
+    original_y_start: int,
+    to_global: bool = True,
+    ) -> Intersection:
+    """
+    Transforms an Intersection in one go.
+    - If to_global=True: treats inputs as LOCAL and returns GLOBAL.
+    - If to_global=False: treats inputs as GLOBAL and returns LOCAL.
+
+    Note:
+        `source_img` should be the image in the *source* space,
+        i.e. the space you are transforming FROM. This keeps `limit_to_img`
+        correct in both directions.
+    """
+    transformed_point = transform_point(intersection.point, original_x_start, original_y_start, to_global=to_global)
+    line1_t = transform_line(intersection.line1, source_img, original_x_start, original_y_start, to_global)
+    line2_t = transform_line(intersection.line2, source_img, original_x_start, original_y_start, to_global)
+    return Intersection(line1_t, line2_t, transformed_point)
