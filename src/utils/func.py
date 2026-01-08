@@ -452,6 +452,16 @@ def find_playfield_internal_sideline_borders(
     lines = _convert_hough_segments_to_lines(segments)
     lines = [line for line in lines if line.slope is None or abs(line.slope) >= slope_threshold]
     lines = group_lines(lines, thresh_theta=thresh_theta, thresh_intercept=thresh_intercept)
+    
+    if len(lines) != 2:
+        positive = [lg for lg in lines if lg.slope is not None and lg.slope > 0]
+        negative = [lg for lg in lines if lg.slope is not None and lg.slope < 0]
+        
+        if positive and negative:
+            lines = [max(positive, key=lambda lg: len(lg.lines)), 
+                     max(negative, key=lambda lg: len(lg.lines))]
+        else:
+            return None, None
 
     pic_copy = original_img.copy()
     for line in lines:
