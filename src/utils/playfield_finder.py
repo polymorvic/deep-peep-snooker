@@ -5,7 +5,7 @@ import numpy as np
 from .func import (binarize_playfield,
     find_playfield_exteral_borders, 
     blackout_pixels_outside_borders,
-    find_playfield_internal_sideline_borders)
+    find_playfield_internal_sideline_borders, find_top_internal_cushion)
 from .lines import Line
 from .points import Point
 
@@ -67,6 +67,38 @@ class PlayfieldFinder:
         binary_mask, inv_binary_img = binarize_playfield(self.img)
         external_intersections, external_lines, _ = find_playfield_exteral_borders(self.img, binary_mask)
         blackout_img = blackout_pixels_outside_borders(external_intersections, inv_binary_img, external_lines)
-        internal_lines, internal_boundaries_img = find_playfield_internal_sideline_borders(self.img, blackout_img)
-        return internal_lines, internal_boundaries_img
+        return find_playfield_internal_sideline_borders(blackout_img)
+
+    def find_top_internal_cushion(self) -> Line | None:
+        """
+        Find the top internal cushion of the playfield.
+        
+        The method processes the image to isolate the playfield area and then detects
+        the top horizontal cushion (the top boundary of the playing area). It uses
+        probabilistic Hough line transformation to detect near-horizontal lines and
+        selects the one positioned highest in the image (lowest intercept value).
+        
+        Process:
+            1. Binarize the image to isolate the playfield area
+            2. Detect external borders of the playfield
+            3. Create a blackout image with pixels outside borders removed
+            4. Detect line segments in the blackout image using Hough transform
+            5. Filter for near-horizontal lines (abs(slope) < 2)
+            6. Sort lines by intercept value (ascending)
+            7. Return the line with the lowest intercept (highest position)
+        
+        Returns:
+            Line | None: Line object representing the top internal cushion (the line
+                        with the lowest intercept value), or None if no suitable lines
+                        are found
+        
+        Note:
+            The top cushion is typically a near-horizontal line that defines the upper
+            boundary of the playing area. The method filters out vertical and highly
+            sloped lines to focus on horizontal boundaries.
+        """
+        binary_mask, inv_binary_img = binarize_playfield(self.img)
+        external_intersections, external_lines, _ = find_playfield_exteral_borders(self.img, binary_mask)
+        blackout_img = blackout_pixels_outside_borders(external_intersections, inv_binary_img, external_lines)
+        return find_top_internal_cushion(blackout_img)
 
