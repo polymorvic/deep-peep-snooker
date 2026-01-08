@@ -1,0 +1,26 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+
+# Virtual environments
+.venv
+
+# folders
+pics/
+
+# extensions
+*.ipynb
+*.png
+*jpg
+*.jpeg
+*.webp
+*.json
+*.pt
+
+
+.DS_Store

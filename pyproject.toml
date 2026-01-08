@@ -1,0 +1,15 @@
+[project]
+name = "deep-peep-snooker"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "matplotlib>=3.10.7",
+    "opencv-python>=4.12.0.88",
+]
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.0.0",
+]
