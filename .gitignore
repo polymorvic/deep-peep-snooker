@@ -14,7 +14,7 @@ wheels/
 pics/
 
 # extensions
-*.ipynb
+# *.ipynb
 *.png
 *jpg
 *.jpeg
