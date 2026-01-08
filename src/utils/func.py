@@ -397,33 +397,36 @@ def blackout_pixels_outside_borders(
 
 
 def find_playfield_internal_sideline_borders(
-    original_img: array_like, 
     blackout_img: array_like, 
     hough_thresh: int = 100, 
-    hough_min_line_len: int = 100, 
+    hough_min_line_len: int = 200, 
     hough_max_line_gap: int = 10,
     thresh_theta: float | int = 50,
     thresh_intercept: float | int = 200,
     slope_threshold: float = 0.1
-    ) -> tuple[list[LineGroup], array_like]:
+    ) -> list[LineGroup] | None:
     """
     Find internal sideline borders of a playfield by detecting line segments.
     
     The function processes a blackout image (where playfield area has been isolated)
     to detect internal sideline borders using probabilistic Hough line transformation.
     It filters and groups similar lines to identify the main sideline borders.
+    Returns exactly 2 lines with opposite slopes (one positive, one negative).
     
     Process:
         1. Apply probabilistic Hough line transformation to detect line segments
-        2. Filter lines based on slope threshold (keep vertical or high-slope lines)
-        3. Group similar lines together based on angle and intercept thresholds
-        4. Create visualization with detected border lines
+        2. Convert detected segments to Line objects
+        3. Filter lines based on slope threshold (keep vertical or high-slope lines)
+        4. Group similar lines together based on angle and intercept thresholds
+        5. If exactly 2 lines are found, return them as-is
+        6. If not 2 lines, filter to keep only lines with opposite slopes (positive and negative),
+           selecting the group with most lines from each category
+        7. Return None if opposite slopes cannot be found
     
     Args:
-        original_img: Original RGB image for visualization
         blackout_img: Binary image with isolated playfield (white pixels represent playfield)
         hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
-        hough_min_line_len: Minimum line length in pixels (default 100)
+        hough_min_line_len: Minimum line length in pixels (default 200)
         hough_max_line_gap: Maximum gap between line segments to connect (default 10)
         thresh_theta: Angle threshold for grouping similar lines in degrees (default 50)
         thresh_intercept: Intercept threshold for grouping similar lines (default 200)
@@ -431,14 +434,17 @@ def find_playfield_internal_sideline_borders(
                           Lines with None slope (vertical) or abs(slope) >= threshold are kept
     
     Returns:
-        Tuple containing:
-            - list[LineGroup]: List of grouped line objects representing detected sideline borders
-            - array_like: Visualization image with border lines drawn in red
+        list[LineGroup] | None: List containing exactly 2 LineGroup objects with opposite slopes
+                                (one with positive slope, one with negative slope) if found,
+                                or None if lines with opposite slopes cannot be found. If exactly
+                                2 lines are detected after grouping, they are returned as-is.
     
     Note:
         The function is designed to detect internal sidelines, which are typically vertical
         or nearly vertical lines. The slope_threshold parameter filters out near-horizontal
-        lines that are not relevant for sideline detection.
+        lines that are not relevant for sideline detection. The function ensures that only
+        2 lines with opposite slopes are returned, selecting the groups with the most lines
+        in each category.
     """
     segments = cv2.HoughLinesP(
         blackout_img, 
@@ -458,14 +464,64 @@ def find_playfield_internal_sideline_borders(
         negative = [lg for lg in lines if lg.slope is not None and lg.slope < 0]
         
         if positive and negative:
-            lines = [max(positive, key=lambda lg: len(lg.lines)), 
+            return [max(positive, key=lambda lg: len(lg.lines)), 
                      max(negative, key=lambda lg: len(lg.lines))]
         else:
-            return None, None
+            return None
 
-    pic_copy = original_img.copy()
-    for line in lines:
-        end_pts = line.limit_to_img(pic_copy)
-        cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
+    return lines
 
-    return lines, pic_copy
+
+def find_top_internal_cushion(
+    blackout_img: array_like,
+    hough_thresh: int = 100,
+    hough_min_line_len: int = 200,
+    hough_max_line_gap: int = 10,
+) -> Line | None:
+    """
+    Find the top internal cushion of a playfield by detecting horizontal line segments.
+    
+    The function processes a blackout image (where playfield area has been isolated)
+    to detect the top internal cushion using probabilistic Hough line transformation.
+    It filters for near-horizontal lines (low slope) and selects the highest one
+    (lowest intercept value) to represent the top cushion.
+    
+    Process:
+        1. Apply probabilistic Hough line transformation to detect line segments
+        2. Convert detected segments to Line objects
+        3. Filter for near-horizontal lines (abs(slope) < 2) with valid intercept
+        4. Sort lines by intercept value (ascending)
+        5. Select the line with the lowest intercept (highest position in image)
+    
+    Args:
+        blackout_img: Binary image with isolated playfield (white pixels represent playfield)
+        hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
+        hough_min_line_len: Minimum line length in pixels (default 200)
+        hough_max_line_gap: Maximum gap between line segments to connect (default 10)
+    
+    Returns:
+        Line | None: Line object representing the top internal cushion (the line with
+                    the lowest intercept value), or None if no suitable lines are found
+    
+    Note:
+        The function is designed to detect the top horizontal cushion, which is typically
+        a near-horizontal line. It filters for lines with small slope values (abs(slope) < 2)
+        and selects the one positioned highest in the image (lowest intercept value).
+    """
+
+    segments = cv2.HoughLinesP(
+        blackout_img, 
+        1, 
+        np.pi / 180, 
+        threshold=hough_thresh, 
+        minLineLength=hough_min_line_len, 
+        maxLineGap=hough_max_line_gap
+    )
+
+    if segments is not None:
+        lines = _convert_hough_segments_to_lines(segments)
+        lines = [line for line in lines if line.intercept is not None and abs(line.slope) < 2]
+        lines = sorted(lines, key=lambda line: line.intercept)
+        return lines[0]
+    else:
+        return None
