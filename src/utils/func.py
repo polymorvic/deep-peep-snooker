@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 from typing import Literal, Iterable
 
+from .const import ref_snooker_playfield
 from .common import array_like, NumpyImage
 from .lines import Line, LineGroup
 from .intersections import Intersection, compute_intersections
@@ -515,6 +516,87 @@ def find_playfield_internal_sideline_borders(
     return lines
 
 
+# def perspective_transform_based_find_bottom_internal_cushion(
+#     original_img: array_like,
+#     internal_top_cushion: Line | LineGroup,
+#     baulk_line: Line | LineGroup,
+#     internal_side_cushions: list[Line | LineGroup],
+#     ) -> Line:
+#     """
+#     Find the bottom internal cushion using perspective transformation based on detected lines.
+    
+#     The function uses a perspective transformation approach to locate the bottom internal cushion
+#     of a snooker playfield. It calculates the homography matrix between reference playfield points
+#     and detected intersection points, then transforms all reference points to find the bottom
+#     cushion location in the image.
+    
+#     Process:
+#         1. Sort internal side cushions by slope to identify left and right cushions
+#         2. Calculate intersection points between:
+#            - Baulk line and left/right side cushions
+#            - Top cushion and left/right side cushions
+#         3. Create destination points array from these intersections
+#         4. Get reference playfield points from ref_snooker_playfield()
+#         5. Calculate homography matrix using cv2.findHomography
+#         6. Transform all reference points to image coordinates
+#         7. Extract bottom_left and bottom_right points from transformed coordinates
+#         8. Return a Line connecting these two points
+    
+#     Args:
+#         original_img: Original image as numpy array or NumpyImage used for intersection bounds checking
+#         internal_top_cushion: Line or LineGroup representing the detected top internal cushion
+#         baulk_line: Line or LineGroup representing the detected baulk line
+#         internal_side_cushions: List of at least 2 Line or LineGroup objects representing the
+#                                left and right internal side cushions. Must contain at least 2 elements.
+#                                The function sorts them by slope to identify left (negative slope)
+#                                and right (positive slope) cushions.
+    
+#     Returns:
+#         Line: Line object representing the bottom internal cushion, connecting the transformed
+#               bottom_left and bottom_right points from the reference playfield.
+    
+#     Raises:
+#         IndexError: If internal_side_cushions contains fewer than 2 elements
+#         AttributeError: If any intersection returns None (lines don't intersect within image bounds)
+#         KeyError: If required reference points are missing from ref_snooker_playfield()
+    
+#     Note:
+#         This function assumes that:
+#         - All intersections between the provided lines exist within the image bounds
+#         - The internal_side_cushions list contains at least 2 elements
+#         - The reference playfield contains the required points: 'baulk_left', 'top_left',
+#           'top_right', 'baulk_right', 'bottom_left', 'bottom_right'
+#         - The perspective transformation is valid (no degenerate cases)
+        
+#         The function uses the slope of side cushions to determine left vs right:
+#         - Left cushion typically has negative slope
+#         - Right cushion typically has positive slope
+#     """
+#     internal_side_cushions = sorted(internal_side_cushions, key=lambda line: line.slope)
+#     left_internal_side_cushion, right_internal_side_cushion = internal_side_cushions[0], internal_side_cushions[1]
+    
+#     baulk_left = baulk_line.intersection(left_internal_side_cushion, original_img).point
+#     top_left = left_internal_side_cushion.intersection(internal_top_cushion, original_img).point
+#     top_right = right_internal_side_cushion.intersection(internal_top_cushion, original_img).point
+#     baulk_right = baulk_line.intersection(right_internal_side_cushion, original_img).point
+    
+#     dst_points = [baulk_left, top_left, top_right, baulk_right]
+#     dst_points_arr = np.float32([p.to_tuple() for p in dst_points])
+
+#     ref_points = ref_snooker_playfield()[1]
+#     ref_points_arr = np.float32([ref_points[n].to_tuple() for n in ['baulk_left', 'top_left', 'top_right','baulk_right']])
+
+#     H, _ = cv2.findHomography(ref_points_arr, dst_points_arr)
+#     all_ref_points_arr = np.array([(p.x, p.y) for p in ref_points.values()], dtype=np.float32)[np.newaxis, ::]
+#     transformed_points = cv2.perspectiveTransform(all_ref_points_arr, H)
+#     coords = transformed_points[0]
+#     transformed_points_dict = {name: Point(*(int(c) for c in coords[i])) for i, name in enumerate(ref_points.keys())}
+
+#     bottom_left = transformed_points_dict['bottom_left']
+#     bottom_right = transformed_points_dict['bottom_right']
+
+#     return Line.from_points(bottom_left, bottom_right)
+
 def find_top_internal_cushion(
     blackout_img: array_like,
     hough_thresh: int = 100,
@@ -629,6 +711,127 @@ def find_baulk_line(
             return None
     else:
         return None
+
+
+# def find_bottom_internal_cushion(
+#     original_image: array_like,
+#     intersection_points: np.ndarray,
+#     hough_thresh: int = 100,
+#     hough_min_line_len: int = 50,
+#     hough_max_line_gap: int = 10,
+#     ) -> Line | None:
+
+#     cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
+
+#     hsv_img = cv2.cvtColor(cropped_by_points, cv2.COLOR_RGB2HSV)
+#     _, _, v = cv2.split(hsv_img)
+
+#     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+#     v_eq = clahe.apply(v)
+
+#     edges = cv2.Canny(v_eq, 50, 150)
+#     segments = cv2.HoughLinesP(
+#         edges,
+#         rho=1,
+#         theta=np.pi/180,
+#         threshold=hough_thresh,
+#         minLineLength=hough_min_line_len,
+#         maxLineGap=hough_max_line_gap
+#     )
+
+#     if segments is not None:
+#         lines = _convert_hough_segments_to_lines(segments)
+#         lines = [line for line in lines if abs(line.slope) < 2]
+
+#         if lines:
+#             lines = group_lines(lines, thresh_theta=50, thresh_intercept=10)
+#             lines = sorted(lines, key=lambda line: line.intercept)
+
+#             print(lines)
+
+#             bottom_cushion_local = lines[-1]
+#             bottom_cushion_global = transform_line(bottom_cushion_local, original_image, x_start, y_start)
+
+#             return bottom_cushion_global
+#         else:
+#             return None
+#     else:
+#         return None
+
+
+def find_bottom_internal_cushion(
+    original_image: array_like,
+    intersection_points: np.ndarray,
+    ) -> Line | None:
+    """
+    Find the bottom internal cushion of the playfield by detecting edge in the lower portion of cropped image.
+    
+    The function processes the bottom portion of a cropped playfield image (lower 10%) to detect
+    the bottom internal cushion (the bottom boundary of the playing area). It uses CLAHE contrast
+    enhancement, Gaussian blur, Sobel gradient detection, and peak finding to locate the horizontal
+    edge between the darker playing surface and the lighter cushion (randa) border.
+    
+    Process:
+        1. Crop the image to the bounding box defined by intersection points
+        2. Extract the bottom 10% region of interest (ROI) from the cropped image
+        3. Convert ROI to HSV color space and extract the Value (brightness) channel
+        4. Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to enhance contrast
+        5. Apply Gaussian blur to reduce noise
+        6. Compute vertical gradient using Sobel operator to detect horizontal edges
+        7. Calculate row-wise gradient response using 90th percentile per row
+        8. Smooth the gradient response using Gaussian convolution
+        9. Find the row with maximum gradient response (strongest horizontal edge)
+        10. Convert the edge position from cropped coordinates to global image coordinates
+        11. Return a horizontal Line object representing the bottom internal cushion
+    
+    Args:
+        original_image: Input image as numpy array or compatible array-like object
+        intersection_points: Array of intersection points defining the bounding box for cropping.
+                            Should be a numpy array with shape (N, 2) where each row is [x, y]
+    
+    Returns:
+        Line | None: Line object representing the bottom internal cushion as a horizontal line
+                    in global image coordinates, or None if detection fails. The line connects
+                    the left and right edges of the image at the detected cushion height.
+    
+    Note:
+        The bottom cushion is typically a near-horizontal edge that separates the darker green
+        playing surface from the lighter green cushion (randa) border. The method works on the
+        lower portion of the cropped playfield where this edge is most visible, using gradient
+        analysis to find the strongest horizontal transition.
+    """
+    cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
+
+    h = cropped_by_points.height
+    roi = cropped_by_points[int(0.9*h):] 
+
+    hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
+    _, _, v = cv2.split(hsv_img)  
+
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
+    v_eq = clahe.apply(v)
+
+    v_blur = cv2.GaussianBlur(v_eq, (9, 9), 0)
+    grad_y = cv2.Sobel(v_blur, cv2.CV_32F, dx=0, dy=1, ksize=3)
+    grad_y = np.abs(grad_y)
+
+    row_response_p = np.percentile(grad_y, 90, axis=1).astype(np.float32)
+
+    k = 21 
+    x = np.linspace(-3, 3, k).astype(np.float32)
+    g = np.exp(-(x**2) / 2).astype(np.float32)
+    g /= g.sum()
+    row_response_smooth = np.convolve(row_response_p, g, mode="same")
+
+    edge_row2 = int(np.argmax(row_response_smooth))
+
+    h_c, w_c = cropped_by_points.shape[:2]
+    roi_y0 = int(0.9 * h_c)     
+    edge_y_in_cropped = roi_y0 + edge_row2
+
+    edge_y_in_pic = int(y_start + edge_y_in_cropped)
+
+    return Line.from_points(Point(0, edge_y_in_pic), Point(w_c, edge_y_in_pic))
 
 
 def transform_point(

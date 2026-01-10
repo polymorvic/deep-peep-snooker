@@ -1,14 +1,13 @@
-import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 
 from .func import (binarize_playfield,
     find_playfield_exteral_borders, 
     blackout_pixels_outside_borders,
-    find_playfield_internal_sideline_borders, find_top_internal_cushion, crop_image_by_points, find_baulk_line)
+    find_playfield_internal_sideline_borders, 
+    find_top_internal_cushion, find_baulk_line, 
+    find_bottom_internal_cushion)
 from .lines import Line
 from .points import Point
-
 
 
 class PlayfieldFinder:
@@ -120,3 +119,34 @@ class PlayfieldFinder:
         intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in external_intersections])
         return find_baulk_line(self.img, intersection_points)
 
+
+    def find_bottom_internal_cushion(self) -> Line | None:
+        """
+        Find the bottom internal cushion of the playfield.
+        
+        Detects the bottom internal cushion by processing the lower portion of the playfield
+        image to locate the horizontal edge between the playing surface and the bottom cushion
+        (randa) border. Uses gradient-based edge detection on contrast-enhanced image data.
+        
+        Process:
+            1. Binarize the image to isolate the playfield area
+            2. Detect external borders of the playfield
+            3. Extract intersection points from external borders
+            4. Call find_bottom_internal_cushion with the original image and intersection points
+            5. Return the detected bottom cushion line in global coordinates
+        
+        Returns:
+            Line | None: Line object representing the bottom internal cushion (the horizontal
+                        line separating the playing surface from the bottom cushion border) in
+                        global image coordinates, or None if detection fails
+        
+        Note:
+            The bottom cushion is typically a near-horizontal edge at the lower boundary of the
+            playing area. The method uses gradient analysis on contrast-enhanced image data to
+            detect the transition between the darker green playing surface and lighter green
+            cushion border.
+        """
+        binary_mask, _ = binarize_playfield(self.img) 
+        external_intersections, _, _ = find_playfield_exteral_borders(self.img, binary_mask)
+        intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in external_intersections])
+        return find_bottom_internal_cushion(self.img, intersection_points)
