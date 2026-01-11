@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Hashable as SupportsHash
 import json
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
@@ -55,36 +56,107 @@ class Hashable(ABC):
 
 
 class Annotation(ABC):
-    """Base class for all annotations."""
+    """Base class for all annotation types.
+    
+    Provides common functionality for loading, processing, and saving annotations.
+    Subclasses must implement the `clean_annotations` property to define how
+    raw annotation data is transformed into a cleaned format.
+    
+    Attributes:
+        root_dir: Directory containing annotation files.
+        raw_annotations: Raw annotation data loaded from files (list of dicts or None).
+        cleaned_annotations: Processed annotation data (list of dicts or None).
+    """
 
     def __init__(self, root_dir: Path) -> None:
-        self.root_dir = Path(root_dir)
+        """Initialize annotation handler.
+        
+        Args:
+            root_dir: Path to directory containing annotation files.
+        """
+        self.root_dir: Path = Path(root_dir)
+        self.raw_annotations: list[dict[str, Any]] | None = None
+        self.cleaned_annotations: list[dict[str, Any]] | None = None
 
-    def __getitem__(self, index: int) -> 'Annotation':
-        raise NotImplementedError
+    def __getitem__(self, index: int) -> dict[str, Any] | None:
+        """Get a cleaned annotation by index.
+        
+        Args:
+            index: Index of the annotation to retrieve.
+            
+        Returns:
+            Dictionary containing the annotation data, or None if not available.
+        """
+        if self.cleaned_annotations is None:
+            return None
+        return self.cleaned_annotations[index]
 
     def __len__(self) -> int:
-        return len(self.annotations)
+        """Return the number of raw annotations.
+        
+        Returns:
+            Number of raw annotations, or 0 if none loaded.
+        """
+        return len(self.raw_annotations) if self.raw_annotations is not None else 0
 
-    def save_annotations(self) -> None:
-        raise NotImplementedError
+    def save(self, file_path: Path) -> None:
+        """Save cleaned annotations to a JSON file if it doesn't already exist.
+        
+        Args:
+            file_path: Path where the annotations should be saved.
+            
+        Note:
+            If the file already exists, the save operation is skipped and a message
+            is printed. Parent directories are created automatically if needed.
+        """
+        if self.cleaned_annotations is None:
+            print(f"No cleaned annotations to save.")
+            return
+        if file_path.exists():
+            print(f"File already exists: {file_path}. Skipping save.")
+            return
+        
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(file_path, 'w') as f:
+            json.dump(self.cleaned_annotations, f, indent=4)
+        print(f"Saved {len(self.cleaned_annotations)} annotations to {file_path}")
 
-    def concat_files(self, extension: str = 'json') -> None:
-        """Concatenate all annotation polygons from all json files in the root directory."""
+    def concat_files(self, extension: str = 'json') -> list[dict[str, Any]]:
+        """Concatenate all annotation files from the root directory.
+        
+        Args:
+            extension: File extension to search for (default: 'json').
+            
+        Returns:
+            List of all annotation dictionaries from all matching files.
+            
+        Note:
+            Loads and combines all annotation files found in root_dir with the
+            specified extension. Sets self.raw_annotations to the combined result.
+        """
         ground_truth_dir = self.root_dir
-        all_ground_truth = []
+        all_ground_truth: list[dict[str, Any]] = []
 
         for json_file in sorted(ground_truth_dir.glob(f'*.{extension}')):
             with open(json_file, 'r') as f:
                 data = json.load(f)
-                all_ground_truth.extend(data)
-
-    @abstractmethod
-    def clean_annotations(self) -> None:
-        raise NotImplementedError
+                all_ground_truth.extend(data)  
+        self.raw_annotations = all_ground_truth
+        return all_ground_truth
 
     @property
     @abstractmethod
-    def annotations(self) -> list['Annotation']:
+    def clean_annotations(self) -> list[dict[str, Any]]:
+        """Process raw annotations into cleaned format.
+        
+        Returns:
+            List of dictionaries containing cleaned annotation data.
+            
+        Note:
+            This property should be implemented by subclasses to define the
+            specific cleaning/transformation logic for each annotation type.
+        """
         raise NotImplementedError
+
+
 
