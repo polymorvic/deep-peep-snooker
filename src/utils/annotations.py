@@ -2,9 +2,11 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
+from pydantic import ValidationError
 
 from src.utils.common import array_like, Annotation
 from src.utils.points import Point
+from src.utils.schemas import PolygonAnnotationData
 
 
 def transform_annotation(
@@ -36,7 +38,7 @@ class PolygonAnnotation(Annotation):
         super().__init__(root_dir)
 
     @property
-    def clean_annotations(self) -> list[dict[str, Any]]:
+    def clean_annotations(self) -> list[PolygonAnnotationData]:
         """Extract and clean polygon annotation data from raw annotations.
         
         Processes raw annotation dictionaries to extract:
@@ -45,13 +47,12 @@ class PolygonAnnotation(Annotation):
         - Original image dimensions
         
         Returns:
-            List of dictionaries, each containing:
-                - 'points': List of [x, y] coordinate pairs
-                - 'image': Dict with 'name' (str), 'width' (int), 'height' (int)
+            List of validated PolygonAnnotationData models.
                 
         Note:
             Invalid or malformed annotations are silently skipped. The result
-            is cached after first computation.
+            is cached after first computation. All returned data is validated
+            using Pydantic models.
         """
         if self.cleaned_annotations is not None:
             return self.cleaned_annotations
@@ -67,15 +68,16 @@ class PolygonAnnotation(Annotation):
                 image_path = ann['data']['image']
                 image_name = image_path.replace('\\', '/').split('/')[-1].split('-', 1)[-1]
                 
-                cleaned_annotations.append({
-                    'points': result['value']['points'],
-                    'image': {
+                annotation_data = PolygonAnnotationData(
+                    points=result['value']['points'],
+                    image={
                         'name': image_name,
                         'width': result['original_width'],
                         'height': result['original_height']
-                        }
-                    })
-            except (KeyError, IndexError, TypeError):
+                    }
+                )
+                cleaned_annotations.append(annotation_data)
+            except (KeyError, IndexError, TypeError, ValidationError):
                 continue
         
         self.cleaned_annotations = cleaned_annotations

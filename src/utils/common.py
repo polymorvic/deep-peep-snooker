@@ -108,6 +108,7 @@ class Annotation(ABC):
         Note:
             If the file already exists, the save operation is skipped and a message
             is printed. Parent directories are created automatically if needed.
+            Supports both dict and Pydantic model annotations.
         """
         if self.cleaned_annotations is None:
             print(f"No cleaned annotations to save.")
@@ -117,8 +118,13 @@ class Annotation(ABC):
             return
         
         file_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        data_to_save = self.cleaned_annotations
+        if data_to_save:
+            data_to_save = [item.model_dump() for item in data_to_save]
+        
         with open(file_path, 'w') as f:
-            json.dump(self.cleaned_annotations, f, indent=4)
+            json.dump(data_to_save, f, indent=4)
         print(f"Saved {len(self.cleaned_annotations)} annotations to {file_path}")
 
     def concat_files(self, extension: str = 'json') -> list[dict[str, Any]]:
