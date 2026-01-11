@@ -1,5 +1,7 @@
 from abc import ABC, abstractmethod
 from collections.abc import Hashable as SupportsHash
+import json
+from pathlib import Path
 
 import numpy as np
 
@@ -50,3 +52,39 @@ class Hashable(ABC):
         if not isinstance(other, self.__class__):
             return False
         return self._key_() == other._key_()
+
+
+class Annotation(ABC):
+    """Base class for all annotations."""
+
+    def __init__(self, root_dir: Path) -> None:
+        self.root_dir = Path(root_dir)
+
+    def __getitem__(self, index: int) -> 'Annotation':
+        raise NotImplementedError
+
+    def __len__(self) -> int:
+        return len(self.annotations)
+
+    def save_annotations(self) -> None:
+        raise NotImplementedError
+
+    def concat_files(self, extension: str = 'json') -> None:
+        """Concatenate all annotation polygons from all json files in the root directory."""
+        ground_truth_dir = self.root_dir
+        all_ground_truth = []
+
+        for json_file in sorted(ground_truth_dir.glob(f'*.{extension}')):
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+                all_ground_truth.extend(data)
+
+    @abstractmethod
+    def clean_annotations(self) -> None:
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def annotations(self) -> list['Annotation']:
+        raise NotImplementedError
+
