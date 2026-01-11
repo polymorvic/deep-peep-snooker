@@ -82,3 +82,16 @@ class PolygonAnnotation(Annotation):
         
         self.cleaned_annotations = cleaned_annotations
         return cleaned_annotations
+    
+    def filter_by_image(self, image_name: str):
+        """Filter cleaned annotations by image name.
+        
+        Args:
+            image_name: Name of the image to filter by (e.g., 'pic_01_04_01.png').
+            
+        Yields:
+            PolygonAnnotationData instances where image.name matches the given name.
+        """
+        for ann in self.clean_annotations:
+            if ann.image.name == image_name:
+                return ann
