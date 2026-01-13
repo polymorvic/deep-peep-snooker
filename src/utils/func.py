@@ -7,7 +7,7 @@ from typing import Literal, Iterable
 
 from .const import ref_snooker_playfield
 from .common import array_like, NumpyImage
-from .lines import Line, LineGroup
+from .lines import Line, LineGroup, transform_line
 from .intersections import Intersection, compute_intersections
 from .points import Point
 
