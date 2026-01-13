@@ -1,11 +1,11 @@
 import copy
-from typing import Literal, Self
+from typing import Iterable, Literal, Self
 
 import numpy as np
 
 from .common import Hashable
 from .intersections import Intersection
-from .points import Point
+from .points import Point, transform_point
 
 type numeric = int | float
 
@@ -389,3 +389,32 @@ class LineGroup(Line):
             self.xv = None
             self.slope = np.median([line.slope for line in self.lines])
             self.intercept = np.median([line.intercept for line in self.lines])
+
+
+def transform_line(
+    original_line: Line, 
+    original_img: np.ndarray, 
+    original_x_start: int, 
+    original_y_start: int, 
+    to_global: bool = True
+    ) -> Line:
+    """
+    Transforms a line's coordinates between local and global image reference frames.
+
+    The function shifts both endpoints of a line by the provided offsets using
+    `transform_point` and reconstructs a new line from the transformed coordinates.
+
+    Args:
+        original_line (Line): Line object to transform.
+        original_img (np.ndarray): Image used to determine line limits.
+        original_x_start (int): X-axis offset.
+        original_y_start (int): Y-axis offset.
+        to_global (bool, optional): If True, converts from local to global coordinates;
+                                    if False, converts from global to local (default: True).
+
+    Returns:
+        Line: Transformed line object with updated coordinates.
+    """
+    pts_source: Iterable[Point] = original_line.limit_to_img(original_img)
+    pts_transformed = [transform_point(p, original_x_start, original_y_start, to_global=to_global) for p in pts_source]
+    return Line.from_points(*pts_transformed)
