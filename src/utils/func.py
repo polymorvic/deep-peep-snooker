@@ -33,6 +33,62 @@ def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarr
     return arr[y - r:y + r, x - r:x + r]
 
 
+def _straighten_mask(mask: np.ndarray) -> np.ndarray:
+    """
+    Straighten a binary mask by fitting linear edges to the left and right boundaries.
+    
+    Steps:
+        1. Convert mask to binary and extract the largest connected component
+        2. For each row, find the leftmost and rightmost pixels
+        3. Fit linear lines to the left and right edges using polyfit
+        4. Create a straightened mask by filling between the fitted lines
+    
+    Args:
+        mask: Input binary mask (any non-zero values treated as foreground)
+    
+    Returns:
+        Straightened binary mask as uint8 array (0 or 255)
+    """
+    m = (mask > 0).astype(np.uint8)
+
+    n, lab, st, _ = cv2.connectedComponentsWithStats(m, 8)
+    if n > 1:
+        m = (lab == (1 + np.argmax(st[1:, cv2.CC_STAT_AREA]))).astype(np.uint8)
+
+    ys, xs = np.where(m)
+    if ys.size == 0:
+        return np.zeros_like(mask)
+
+    y0, y1 = ys.min(), ys.max()
+    H, W = m.shape
+    L = np.full(H, -1, np.int32)
+    R = np.full(H, -1, np.int32)
+
+    for y in range(y0, y1 + 1):
+        x = np.where(m[y])[0]
+        if x.size:
+            L[y], R[y] = x[0], x[-1]
+
+    v = (L >= 0) & (R >= 0)
+    if v.sum() < 2:
+        out = np.zeros_like(m)
+        out[y0:y1 + 1, xs.min():xs.max() + 1] = 1
+        return (out * 255).astype(np.uint8)
+
+    aL, bL = np.polyfit(np.where(v)[0], L[v], 1)
+    aR, bR = np.polyfit(np.where(v)[0], R[v], 1)
+
+    out = np.zeros_like(m)
+    for y in range(y0, y1 + 1):
+        x0 = int(round(aL * y + bL))
+        x1 = int(round(aR * y + bR))
+        if x0 > x1:
+            x0, x1 = x1, x0
+        out[y, max(0, x0):min(W, x1 + 1)] = 1
+
+    return (out * 255).astype(np.uint8)
+
+
 def crop_image_by_points(
     img: np.ndarray | NumpyImage,
     points: np.ndarray[int] | list[Point] | list[Intersection]
@@ -369,7 +425,8 @@ def find_playfield_exteral_borders(
         Intersection points and line groups can be used to reconstruct the playfield boundary.
     """
     binary_mask_close = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, np.ones(kernel_size, np.uint8))
-    edges = cv2.Canny(binary_mask_close, canny_thresh_lower, canny_thresh_upper)
+    straightened_binary_mask_close = _straighten_mask(binary_mask_close)
+    edges = cv2.Canny(straightened_binary_mask_close, canny_thresh_lower, canny_thresh_upper)
     segments = cv2.HoughLinesP(
         edges, 
         1, 
@@ -390,7 +447,7 @@ def find_playfield_exteral_borders(
         cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
         cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
                 
-    return intersections, lines, pic_copy
+    return intersections, lines, pic_copy, binary_mask_close
 
 
 def blackout_pixels_outside_borders(
@@ -516,87 +573,6 @@ def find_playfield_internal_sideline_borders(
     return lines
 
 
-# def perspective_transform_based_find_bottom_internal_cushion(
-#     original_img: array_like,
-#     internal_top_cushion: Line | LineGroup,
-#     baulk_line: Line | LineGroup,
-#     internal_side_cushions: list[Line | LineGroup],
-#     ) -> Line:
-#     """
-#     Find the bottom internal cushion using perspective transformation based on detected lines.
-    
-#     The function uses a perspective transformation approach to locate the bottom internal cushion
-#     of a snooker playfield. It calculates the homography matrix between reference playfield points
-#     and detected intersection points, then transforms all reference points to find the bottom
-#     cushion location in the image.
-    
-#     Process:
-#         1. Sort internal side cushions by slope to identify left and right cushions
-#         2. Calculate intersection points between:
-#            - Baulk line and left/right side cushions
-#            - Top cushion and left/right side cushions
-#         3. Create destination points array from these intersections
-#         4. Get reference playfield points from ref_snooker_playfield()
-#         5. Calculate homography matrix using cv2.findHomography
-#         6. Transform all reference points to image coordinates
-#         7. Extract bottom_left and bottom_right points from transformed coordinates
-#         8. Return a Line connecting these two points
-    
-#     Args:
-#         original_img: Original image as numpy array or NumpyImage used for intersection bounds checking
-#         internal_top_cushion: Line or LineGroup representing the detected top internal cushion
-#         baulk_line: Line or LineGroup representing the detected baulk line
-#         internal_side_cushions: List of at least 2 Line or LineGroup objects representing the
-#                                left and right internal side cushions. Must contain at least 2 elements.
-#                                The function sorts them by slope to identify left (negative slope)
-#                                and right (positive slope) cushions.
-    
-#     Returns:
-#         Line: Line object representing the bottom internal cushion, connecting the transformed
-#               bottom_left and bottom_right points from the reference playfield.
-    
-#     Raises:
-#         IndexError: If internal_side_cushions contains fewer than 2 elements
-#         AttributeError: If any intersection returns None (lines don't intersect within image bounds)
-#         KeyError: If required reference points are missing from ref_snooker_playfield()
-    
-#     Note:
-#         This function assumes that:
-#         - All intersections between the provided lines exist within the image bounds
-#         - The internal_side_cushions list contains at least 2 elements
-#         - The reference playfield contains the required points: 'baulk_left', 'top_left',
-#           'top_right', 'baulk_right', 'bottom_left', 'bottom_right'
-#         - The perspective transformation is valid (no degenerate cases)
-        
-#         The function uses the slope of side cushions to determine left vs right:
-#         - Left cushion typically has negative slope
-#         - Right cushion typically has positive slope
-#     """
-#     internal_side_cushions = sorted(internal_side_cushions, key=lambda line: line.slope)
-#     left_internal_side_cushion, right_internal_side_cushion = internal_side_cushions[0], internal_side_cushions[1]
-    
-#     baulk_left = baulk_line.intersection(left_internal_side_cushion, original_img).point
-#     top_left = left_internal_side_cushion.intersection(internal_top_cushion, original_img).point
-#     top_right = right_internal_side_cushion.intersection(internal_top_cushion, original_img).point
-#     baulk_right = baulk_line.intersection(right_internal_side_cushion, original_img).point
-    
-#     dst_points = [baulk_left, top_left, top_right, baulk_right]
-#     dst_points_arr = np.float32([p.to_tuple() for p in dst_points])
-
-#     ref_points = ref_snooker_playfield()[1]
-#     ref_points_arr = np.float32([ref_points[n].to_tuple() for n in ['baulk_left', 'top_left', 'top_right','baulk_right']])
-
-#     H, _ = cv2.findHomography(ref_points_arr, dst_points_arr)
-#     all_ref_points_arr = np.array([(p.x, p.y) for p in ref_points.values()], dtype=np.float32)[np.newaxis, ::]
-#     transformed_points = cv2.perspectiveTransform(all_ref_points_arr, H)
-#     coords = transformed_points[0]
-#     transformed_points_dict = {name: Point(*(int(c) for c in coords[i])) for i, name in enumerate(ref_points.keys())}
-
-#     bottom_left = transformed_points_dict['bottom_left']
-#     bottom_right = transformed_points_dict['bottom_right']
-
-#     return Line.from_points(bottom_left, bottom_right)
-
 def find_top_internal_cushion(
     blackout_img: array_like,
     hough_thresh: int = 100,
@@ -713,52 +689,6 @@ def find_baulk_line(
         return None
 
 
-# def find_bottom_internal_cushion(
-#     original_image: array_like,
-#     intersection_points: np.ndarray,
-#     hough_thresh: int = 100,
-#     hough_min_line_len: int = 50,
-#     hough_max_line_gap: int = 10,
-#     ) -> Line | None:
-
-#     cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
-
-#     hsv_img = cv2.cvtColor(cropped_by_points, cv2.COLOR_RGB2HSV)
-#     _, _, v = cv2.split(hsv_img)
-
-#     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-#     v_eq = clahe.apply(v)
-
-#     edges = cv2.Canny(v_eq, 50, 150)
-#     segments = cv2.HoughLinesP(
-#         edges,
-#         rho=1,
-#         theta=np.pi/180,
-#         threshold=hough_thresh,
-#         minLineLength=hough_min_line_len,
-#         maxLineGap=hough_max_line_gap
-#     )
-
-#     if segments is not None:
-#         lines = _convert_hough_segments_to_lines(segments)
-#         lines = [line for line in lines if abs(line.slope) < 2]
-
-#         if lines:
-#             lines = group_lines(lines, thresh_theta=50, thresh_intercept=10)
-#             lines = sorted(lines, key=lambda line: line.intercept)
-
-#             print(lines)
-
-#             bottom_cushion_local = lines[-1]
-#             bottom_cushion_global = transform_line(bottom_cushion_local, original_image, x_start, y_start)
-
-#             return bottom_cushion_global
-#         else:
-#             return None
-#     else:
-#         return None
-
-
 def find_bottom_internal_cushion(
     original_image: array_like,
     intersection_points: np.ndarray,
@@ -774,15 +704,18 @@ def find_bottom_internal_cushion(
     Process:
         1. Crop the image to the bounding box defined by intersection points
         2. Extract the bottom 10% region of interest (ROI) from the cropped image
-        3. Convert ROI to HSV color space and extract the Value (brightness) channel
-        4. Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to enhance contrast
-        5. Apply Gaussian blur to reduce noise
-        6. Compute vertical gradient using Sobel operator to detect horizontal edges
-        7. Calculate row-wise gradient response using 90th percentile per row
-        8. Smooth the gradient response using Gaussian convolution
-        9. Find the row with maximum gradient response (strongest horizontal edge)
-        10. Convert the edge position from cropped coordinates to global image coordinates
-        11. Return a horizontal Line object representing the bottom internal cushion
+        3. Exclude bottom 10% of ROI to ignore dark border
+        4. Convert ROI to HSV color space and extract channels
+        5. Create green color mask to filter only green pixels (avoid objects in ROI)
+        6. Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to enhance contrast
+        7. Apply bilateral filter to reduce noise
+        8. Compute vertical gradient using Sobel operator to detect horizontal edges
+        9. Apply green mask to gradient (only consider green pixels)
+        10. Calculate row-wise gradient response using 90th percentile per row
+        11. Smooth the gradient response using Gaussian convolution
+        12. Find the row with maximum gradient response (strongest horizontal edge)
+        13. Convert the edge position from cropped coordinates to global image coordinates
+        14. Return a horizontal Line object representing the bottom internal cushion
     
     Args:
         original_image: Input image as numpy array or compatible array-like object
@@ -798,22 +731,31 @@ def find_bottom_internal_cushion(
         The bottom cushion is typically a near-horizontal edge that separates the darker green
         playing surface from the lighter green cushion (randa) border. The method works on the
         lower portion of the cropped playfield where this edge is most visible, using gradient
-        analysis to find the strongest horizontal transition.
+        analysis to find the strongest horizontal transition. Only green pixels are considered
+        to avoid interference from objects that may be present in the ROI.
     """
     cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
 
     h = cropped_by_points.height
     roi = cropped_by_points[int(0.9*h):] 
+    
+    roi_h = roi.shape[0]
+    exclude_bottom_rows = max(1, int(roi_h * 0.1))
+    roi = roi[:-exclude_bottom_rows, :] if exclude_bottom_rows > 0 else roi
 
     hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
-    _, _, v = cv2.split(hsv_img)  
+    h, s, v = cv2.split(hsv_img)  
+
+    green_mask = ((h >= 30) & (h <= 95) & (s >= 35) & (v >= 35)).astype(np.uint8)
 
     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
     v_eq = clahe.apply(v)
 
-    v_blur = cv2.GaussianBlur(v_eq, (9, 9), 0)
+    v_blur = cv2.bilateralFilter(v_eq, 9, 10, 10)
     grad_y = cv2.Sobel(v_blur, cv2.CV_32F, dx=0, dy=1, ksize=3)
     grad_y = np.abs(grad_y)
+    
+    grad_y = np.where(green_mask > 0, grad_y, 0)
 
     row_response_p = np.percentile(grad_y, 90, axis=1).astype(np.float32)
 
@@ -821,9 +763,9 @@ def find_bottom_internal_cushion(
     x = np.linspace(-3, 3, k).astype(np.float32)
     g = np.exp(-(x**2) / 2).astype(np.float32)
     g /= g.sum()
-    row_response_smooth = np.convolve(row_response_p, g, mode="same")
+    row_response = np.convolve(row_response_p, g, mode="same")
 
-    edge_row2 = int(np.argmax(row_response_smooth))
+    edge_row2 = int(np.argmax(row_response))
 
     h_c, w_c = cropped_by_points.shape[:2]
     roi_y0 = int(0.9 * h_c)     
@@ -832,4 +774,3 @@ def find_bottom_internal_cushion(
     edge_y_in_pic = int(y_start + edge_y_in_cropped)
 
     return Line.from_points(Point(0, edge_y_in_pic), Point(w_c, edge_y_in_pic))
-
