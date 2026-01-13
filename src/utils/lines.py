@@ -1,11 +1,13 @@
 import copy
-from typing import Iterable, Literal, Self
+from typing import Iterable, Literal, Self, TYPE_CHECKING, Union
 
 import numpy as np
 
 from .common import Hashable
-from .intersections import Intersection
 from .points import Point, transform_point
+
+if TYPE_CHECKING:
+    from .intersections import Intersection
 
 type numeric = int | float
 
@@ -67,7 +69,7 @@ class Line(Hashable):
         """
         return copy.deepcopy(self)
 
-    def intersection(self, another_line: Self, image: np.ndarray) -> Intersection | None:
+    def intersection(self, another_line: Self, image: np.ndarray) -> Union['Intersection', None]:
         """
         Compute the intersection point between this line and another line,
         and return it as an `Intersection` object if it lies within image bounds.
@@ -80,6 +82,8 @@ class Line(Hashable):
             Intersection | None: The intersection object if the lines intersect within the image bounds,
             otherwise None.
         """
+        from .intersections import Intersection
+        
         if (self.slope is not None and another_line.slope is not None and self.slope == another_line.slope) or (
             self.xv is not None and another_line.xv is not None
         ):

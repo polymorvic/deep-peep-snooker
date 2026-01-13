@@ -3,11 +3,10 @@ from typing import TYPE_CHECKING, Self
 import numpy as np
 
 from .common import Hashable, array_like
-from .lines import transform_line
 from .points import transform_point
 
 if TYPE_CHECKING:
-    from .lines import Line
+    from .lines import Line, transform_line
     from .points import Point
 
 
@@ -163,6 +162,9 @@ def transform_intersection(
         i.e. the space you are transforming FROM. This keeps `limit_to_img`
         correct in both directions.
     """
+    # Import here to avoid circular import
+    from .lines import transform_line
+    
     transformed_point = transform_point(intersection.point, original_x_start, original_y_start, to_global=to_global)
     line1_t = transform_line(intersection.line1, source_img, original_x_start, original_y_start, to_global)
     line2_t = transform_line(intersection.line2, source_img, original_x_start, original_y_start, to_global)
