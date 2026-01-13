@@ -1,9 +1,11 @@
-from typing import Iterator, Self
+from typing import Iterator, TYPE_CHECKING, Self, Union
 
 import numpy as np
 
 from .common import Hashable
-from .intersections import Intersection
+
+if TYPE_CHECKING:
+    from .intersections import Intersection
 
 
 class Point[T: (int, float)](Hashable):
@@ -128,7 +130,7 @@ class Point[T: (int, float)](Hashable):
 
 
 def transform_point(
-    point: Intersection | Point, 
+    point: Union['Intersection', Point], 
     original_x_start: int, 
     original_y_start: int, 
     to_global: bool = True
@@ -149,6 +151,8 @@ def transform_point(
     Returns:
         Point: Transformed point with updated coordinates.
     """
+    from .intersections import Intersection
+    
     if isinstance(point, Intersection):
         point = point.point
 
