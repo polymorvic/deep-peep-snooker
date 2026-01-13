@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING, Self
 import numpy as np
 
 from .common import Hashable, array_like
+from .lines import transform_line
+from .points import transform_point
 
 if TYPE_CHECKING:
     from .lines import Line
@@ -142,3 +144,26 @@ def compute_intersections(lines: list['Line'], image: array_like) -> list[Inters
             if intersection is not None:
                 intersections.append(intersection)
     return intersections
+
+
+def transform_intersection(
+    intersection: Intersection,
+    source_img: np.ndarray,
+    original_x_start: int,
+    original_y_start: int,
+    to_global: bool = True,
+    ) -> Intersection:
+    """
+    Transforms an Intersection in one go.
+    - If to_global=True: treats inputs as LOCAL and returns GLOBAL.
+    - If to_global=False: treats inputs as GLOBAL and returns LOCAL.
+
+    Note:
+        `source_img` should be the image in the *source* space,
+        i.e. the space you are transforming FROM. This keeps `limit_to_img`
+        correct in both directions.
+    """
+    transformed_point = transform_point(intersection.point, original_x_start, original_y_start, to_global=to_global)
+    line1_t = transform_line(intersection.line1, source_img, original_x_start, original_y_start, to_global)
+    line2_t = transform_line(intersection.line2, source_img, original_x_start, original_y_start, to_global)
+    return Intersection(line1_t, line2_t, transformed_point)
