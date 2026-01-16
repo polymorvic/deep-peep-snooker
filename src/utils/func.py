@@ -782,7 +782,7 @@ def find_bottom_internal_cushion(
 
     egdes = cv2.Canny(v, 10, 50)
 
-    segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 10) # 50
+    segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 25) # 50
 
     if segments is not None:
         lines = _convert_hough_segments_to_lines(segments)
