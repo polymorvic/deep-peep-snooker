@@ -34,59 +34,95 @@ def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarr
 
 
 def _straighten_mask(mask: np.ndarray) -> np.ndarray:
-    """
-    Straighten a binary mask by fitting linear edges to the left and right boundaries.
-    
-    Steps:
-        1. Convert mask to binary and extract the largest connected component
-        2. For each row, find the leftmost and rightmost pixels
-        3. Fit linear lines to the left and right edges using polyfit
-        4. Create a straightened mask by filling between the fitted lines
-    
-    Args:
-        mask: Input binary mask (any non-zero values treated as foreground)
-    
-    Returns:
-        Straightened binary mask as uint8 array (0 or 255)
-    """
-    m = (mask > 0).astype(np.uint8)
 
-    n, lab, st, _ = cv2.connectedComponentsWithStats(m, 8)
-    if n > 1:
-        m = (lab == (1 + np.argmax(st[1:, cv2.CC_STAT_AREA]))).astype(np.uint8)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if contours:
+        largest_contour = max(contours, key=cv2.contourArea)
 
-    ys, xs = np.where(m)
-    if ys.size == 0:
-        return np.zeros_like(mask)
+        mask = np.zeros_like(mask, dtype=np.uint8)
+        cv2.drawContours(mask, [largest_contour], -1, 255, -1)
 
-    y0, y1 = ys.min(), ys.max()
+    m = mask.astype(bool)
     H, W = m.shape
-    L = np.full(H, -1, np.int32)
-    R = np.full(H, -1, np.int32)
 
-    for y in range(y0, y1 + 1):
-        x = np.where(m[y])[0]
-        if x.size:
-            L[y], R[y] = x[0], x[-1]
+    ys = np.where(m.any(1))[0]
+    y0, y1 = ys[0], ys[-1]
+    y = np.arange(y0, y1 + 1)
 
-    v = (L >= 0) & (R >= 0)
-    if v.sum() < 2:
-        out = np.zeros_like(m)
-        out[y0:y1 + 1, xs.min():xs.max() + 1] = 1
-        return (out * 255).astype(np.uint8)
+    xl, xr = [], []
+    for yy in y:
+        xs = np.where(m[yy])[0]
+        if xs.size:
+            xl.append(xs[0])
+            xr.append(xs[-1])
 
-    aL, bL = np.polyfit(np.where(v)[0], L[v], 1)
-    aR, bR = np.polyfit(np.where(v)[0], R[v], 1)
+    y = y[:len(xl)]
+    xl, xr = np.array(xl), np.array(xr)
 
-    out = np.zeros_like(m)
-    for y in range(y0, y1 + 1):
-        x0 = int(round(aL * y + bL))
-        x1 = int(round(aR * y + bR))
-        if x0 > x1:
-            x0, x1 = x1, x0
-        out[y, max(0, x0):min(W, x1 + 1)] = 1
+    ml, cl = np.polyfit(y, xl, 1)
+    mr, cr = np.polyfit(y, xr, 1)
+    al, bl = 1/ml, -cl/ml
+    ar, br = 1/mr, -cr/mr
+
+    ym = int(np.median(y))
+    xlm = np.interp(ym, y, xl)
+    xrm = np.interp(ym, y, xr)
+
+    if al >= 0:
+        al = -abs(ar)
+        bl = ym - al * xlm
+    if ar <= 0:
+        ar = abs(al)
+        br = ym - ar * xrm
+
+    out = np.zeros((H, W), dtype=np.uint8)
+    for yy in range(y0, y1 + 1):
+        xL = int((yy - bl) / al)
+        xR = int((yy - br) / ar)
+        xL, xR = sorted((np.clip(xL, 0, W-1), np.clip(xR, 0, W-1)))
+        out[yy, xL:xR + 1] = 1
 
     return (out * 255).astype(np.uint8)
+
+
+def _select_lines(lines: list[Line]) -> list[Line]:
+    """
+    Select exactly 4 lines from a list of lines:
+    - Top line: slope = 0, intercept = min
+    - Bottom line: slope = 0, intercept = max
+    - Left line: slope < 0 (negative)
+    - Right line: slope > 0 (positive)
+    
+    Args:
+        lines: List of Line objects
+        
+    Returns:
+        List of exactly 4 Line objects: [top_line, bottom_line, left_line, right_line]
+    """
+    horizontal_lines = [line for line in lines if line.slope is not None and abs(line.slope) < 0.1]
+    positive_lines = [line for line in lines if line.slope is not None and line.slope > 0]
+    negative_lines = [line for line in lines if line.slope is not None and line.slope < 0]
+
+    selected_lines = []
+    if horizontal_lines:
+        horizontal_lines_sorted = sorted(horizontal_lines, key=lambda line: line.intercept if line.intercept is not None else float('inf'))
+        top_line = horizontal_lines_sorted[0] 
+        selected_lines.append(top_line)
+    
+    if horizontal_lines and len(horizontal_lines) > 1:
+        bottom_line = horizontal_lines_sorted[-1]
+        selected_lines.append(bottom_line)
+    elif horizontal_lines:
+        selected_lines.append(horizontal_lines_sorted[0])
+    
+    if negative_lines:
+        selected_lines.append(negative_lines[0])
+    
+    if positive_lines:
+        selected_lines.append(positive_lines[0])
+    
+    return selected_lines
+
 
 
 def crop_image_by_points(
@@ -438,6 +474,7 @@ def find_playfield_exteral_borders(
 
     lines = _convert_hough_segments_to_lines(segments)
     lines = group_lines(lines, thresh_intercept=group_lines_thresh_intercept)
+    lines = _select_lines(lines)
     intersections = compute_intersections(lines, binary_mask)
 
     pic_copy = original_img.copy()
@@ -446,6 +483,7 @@ def find_playfield_exteral_borders(
         end_pts = line.limit_to_img(pic_copy)
         cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
         cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
+
                 
     return intersections, lines, pic_copy, binary_mask_close
 
@@ -736,41 +774,33 @@ def find_bottom_internal_cushion(
     """
     cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
 
-    h = cropped_by_points.height
-    roi = cropped_by_points[int(0.9*h):] 
-    
-    roi_h = roi.shape[0]
-    exclude_bottom_rows = max(1, int(roi_h * 0.1))
-    roi = roi[:-exclude_bottom_rows, :] if exclude_bottom_rows > 0 else roi
+    H = cropped_by_points.height
+    roi = cropped_by_points[int(0.95*H):] 
 
     hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
     h, s, v = cv2.split(hsv_img)  
 
-    green_mask = ((h >= 30) & (h <= 95) & (s >= 35) & (v >= 35)).astype(np.uint8)
+    egdes = cv2.Canny(v, 10, 50)
 
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-    v_eq = clahe.apply(v)
+    segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 10) # 50
 
-    v_blur = cv2.bilateralFilter(v_eq, 9, 10, 10)
-    grad_y = cv2.Sobel(v_blur, cv2.CV_32F, dx=0, dy=1, ksize=3)
-    grad_y = np.abs(grad_y)
-    
-    grad_y = np.where(green_mask > 0, grad_y, 0)
-
-    row_response_p = np.percentile(grad_y, 90, axis=1).astype(np.float32)
-
-    k = 21 
-    x = np.linspace(-3, 3, k).astype(np.float32)
-    g = np.exp(-(x**2) / 2).astype(np.float32)
-    g /= g.sum()
-    row_response = np.convolve(row_response_p, g, mode="same")
-
-    edge_row2 = int(np.argmax(row_response))
-
-    h_c, w_c = cropped_by_points.shape[:2]
-    roi_y0 = int(0.9 * h_c)     
-    edge_y_in_cropped = roi_y0 + edge_row2
-
-    edge_y_in_pic = int(y_start + edge_y_in_cropped)
-
-    return Line.from_points(Point(0, edge_y_in_pic), Point(w_c, edge_y_in_pic))
+    if segments is not None:
+        lines = _convert_hough_segments_to_lines(segments)
+        lines = [line for line in lines if line.slope == 0]
+        if lines:
+            bottom_line_local = sorted(lines, key=lambda line: line.intercept)[0]
+            
+            roi_y_start = int(0.95 * H)
+            
+            bottom_line_global = transform_line(
+                bottom_line_local, 
+                roi, 
+                x_start,         
+                y_start + roi_y_start
+            )
+            
+            return bottom_line_global
+        else:
+            return None
+    else:
+        return None
