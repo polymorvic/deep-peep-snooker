@@ -146,7 +146,7 @@ class PlayfieldFinder:
             detect the transition between the darker green playing surface and lighter green
             cushion border.
         """
-        binary_mask, _ = binarize_playfield(self.img) 
-        external_intersections, _, _ = find_playfield_exteral_borders(self.img, binary_mask)
+        binary_mask, _ = binarize_playfield(self.img)
+        external_intersections, _, _, _ = find_playfield_exteral_borders(self.img, binary_mask)
         intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in external_intersections])
         return find_bottom_internal_cushion(self.img, intersection_points)
