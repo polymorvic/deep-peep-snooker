@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from typing import Any
 
@@ -95,3 +96,40 @@ class PolygonAnnotation(Annotation):
         for ann in self.clean_annotations:
             if ann.image.name == image_name:
                 return ann
+    
+    def read(self, file_path: Path | str) -> None:
+        """Read annotation file and return a list of PolygonAnnotationData objects.
+        
+        Args:
+            file_path: Path to the annotation JSON file.
+            
+        Returns:
+            List of PolygonAnnotationData instances parsed from the file.
+            
+        Raises:
+            FileNotFoundError: If the annotation file does not exist.
+            json.JSONDecodeError: If the file contains invalid JSON.
+            ValidationError: If any annotation data fails Pydantic validation.
+        """
+        file_path = Path(file_path)
+        
+        if not file_path.exists():
+            raise FileNotFoundError(f"Annotation file not found: {file_path}")
+        
+        with open(file_path, 'r') as f:
+            data = json.load(f)
+        
+        if not isinstance(data, list):
+            raise ValueError(f"Expected JSON array in annotation file, got {type(data).__name__}")
+        
+        annotations = []
+        for item in data:
+            try:
+                annotation_data = PolygonAnnotationData(**item)
+                annotations.append(annotation_data)
+            except ValidationError as e:
+                raise ValidationError(
+                    f"Failed to validate annotation data: {e.errors()}"
+                ) from e
+        
+        self.cleaned_annotations = annotations
