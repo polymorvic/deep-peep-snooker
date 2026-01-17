@@ -5,7 +5,7 @@ import numpy as np
 from .intersections import compute_intersections, Intersection
 from .func import (crop_center, pipette_color,
                    _straighten_mask, _convert_hough_segments_to_lines,
-                   group_lines, _select_lines, crop_image_by_points, binarize_playfield, find_playfield_exteral_borders
+                   group_lines, _select_lines, crop_image_by_points, sanitize_lines
                    )
 from .lines import transform_line
                    
@@ -111,15 +111,7 @@ class PlayfieldFinder:
         binary_mask_close = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, np.ones(kernel_size, np.uint8))
         straightened_binary_mask_close = _straighten_mask(binary_mask_close)
 
-        plt.imshow(straightened_binary_mask_close)
-        plt.show()
-
-
         edges = cv2.Canny(straightened_binary_mask_close, canny_thresh_lower, canny_thresh_upper)
-
-        plt.imshow(edges)
-        plt.show()
-
         segments = cv2.HoughLinesP(
             edges, 
             1, 
@@ -129,20 +121,19 @@ class PlayfieldFinder:
             maxLineGap=hough_max_line_gap
         )
 
-        print(segments)
-
         lines = _convert_hough_segments_to_lines(segments)
+        if any(line.slope is None for line in lines):
+            lines = sanitize_lines(lines)
 
-        print(lines)
         lines = group_lines(lines, thresh_intercept=group_lines_thresh_intercept)
         lines = _select_lines(lines)
-        intersections = compute_intersections(lines, binary_mask)
+        intersections = compute_intersections(lines, self.img)
 
         pic_copy = self.img.copy()
         for intersection, line in zip(intersections, lines):
             pt = intersection.point.as_int()
             end_pts = line.limit_to_img(pic_copy)
-            cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
+            cv2.line(pic_copy, *end_pts, (255, 0, 0), 1)
             cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
 
         self.preprocessed_img = pic_copy
@@ -220,14 +211,6 @@ class PlayfieldFinder:
 
 
     def find_bottom_internal_cushion(self) -> Line | None:
-
-        # binary_mask, _ = binarize_playfield(self.img)
-        # external_intersections, _, _, _ = find_playfield_exteral_borders(self.img, binary_mask)
-        # intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in external_intersections])
-        # return find_bottom_internal_cushion(self.img, intersection_points)
-    
-
-
         cropped_by_points, x_start, y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
 
         H = cropped_by_points.height
