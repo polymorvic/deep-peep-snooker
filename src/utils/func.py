@@ -12,7 +12,7 @@ from .intersections import Intersection, compute_intersections
 from .points import Point
 
 
-def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarray | NumpyImage:
+def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.5) -> np.ndarray | NumpyImage:
     """
     Crop the center of the image by a given percentage.
 
@@ -69,10 +69,10 @@ def _straighten_mask(mask: np.ndarray) -> np.ndarray:
     xrm = np.interp(ym, y, xr)
 
     if al >= 0:
-        al = -abs(ar)
+        al = -ar
         bl = ym - al * xlm
     if ar <= 0:
-        ar = abs(al)
+        ar = -al
         br = ym - ar * xrm
 
     out = np.zeros((H, W), dtype=np.uint8)
@@ -296,6 +296,35 @@ def group_lines(lines: list[Line],
     return groups
 
 
+def sanitize_lines(lines: list[Line]) -> list[Line]:
+    unique_lines = list(set(lines))
+    reference_lines = [line for line in unique_lines 
+                       if line.slope is not None and abs(line.slope) > 1e-10]
+
+    horizontal_lines = [line for line in unique_lines 
+                        if line.slope is not None and abs(line.slope) < 1e-10]
+    
+    if not reference_lines:
+        return unique_lines
+    
+    reference_line = max(reference_lines, key=lambda line: abs(line.slope))
+    reference_slope = reference_line.slope
+    reference_intercept = reference_line.intercept
+    mirror_slope = -reference_slope
+
+    new_line_intercept = reference_intercept * -0.3 if reference_slope > 0 else reference_intercept * -3
+    
+    sanitized = set()
+    for line in unique_lines:
+        if line.slope is None:
+            new_line = Line(slope=mirror_slope, intercept=new_line_intercept, xv=None)
+            sanitized.add(new_line)
+        else:
+            sanitized.add(line)
+    
+    return list(sanitized) + horizontal_lines
+
+
 def apply_pht(
     img: np.ndarray,
     canny_thresh_lower: int = 30,
@@ -357,182 +386,182 @@ def apply_pht(
     return segments_img, lines_img, lines
 
 
-def binarize_playfield(img: np.ndarray | NumpyImage) -> tuple[np.ndarray, np.ndarray]:
-    """
-    Binarize an image to isolate the playfield area using color-based segmentation.
+# def binarize_playfield(img: np.ndarray | NumpyImage) -> tuple[np.ndarray, np.ndarray]:
+#     """
+#     Binarize an image to isolate the playfield area using color-based segmentation.
     
-    The function detects the dominant color in the center of the image and creates
-    binary masks based on that color. It uses HSV color space for more robust color
-    detection and calculates dynamic tolerance thresholds based on color variance.
+#     The function detects the dominant color in the center of the image and creates
+#     binary masks based on that color. It uses HSV color space for more robust color
+#     detection and calculates dynamic tolerance thresholds based on color variance.
     
-    Process:
-        1. Convert image to HSV color space
-        2. Crop the center region of the image to analyze dominant color
-        3. Detect dominant color using KMeans clustering
-        4. Calculate dynamic tolerance based on color variance
-        5. Create binary mask using cv2.inRange with calculated thresholds
-        6. Generate inverted binary image
+#     Process:
+#         1. Convert image to HSV color space
+#         2. Crop the center region of the image to analyze dominant color
+#         3. Detect dominant color using KMeans clustering
+#         4. Calculate dynamic tolerance based on color variance
+#         5. Create binary mask using cv2.inRange with calculated thresholds
+#         6. Generate inverted binary image
     
-    Args:
-        img: Input image as RGB numpy array or NumpyImage
+#     Args:
+#         img: Input image as RGB numpy array or NumpyImage
     
-    Returns:
-        Tuple containing two binary masks:
-            - binary_mask: Binary mask where white pixels represent the detected playfield color
-            - inv_binary_img: Inverted binary mask (black pixels represent detected color)
+#     Returns:
+#         Tuple containing two binary masks:
+#             - binary_mask: Binary mask where white pixels represent the detected playfield color
+#             - inv_binary_img: Inverted binary mask (black pixels represent detected color)
     
-    Note:
-        The tolerance for color matching is dynamically calculated as 1.5x the standard
-        deviation of each HSV channel, allowing for variation in lighting and shadows.
-    """
-    img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
-    cropped_img_hsv = crop_center(img_hsv)
+#     Note:
+#         The tolerance for color matching is dynamically calculated as 1.5x the standard
+#         deviation of each HSV channel, allowing for variation in lighting and shadows.
+#     """
+#     img_hsv = cv2.cvtColor(img, cv2.COLOR_RGB2HSV)
+#     cropped_img_hsv = crop_center(img_hsv)
 
-    dominant_color = pipette_color(cropped_img_hsv)
+#     dominant_color = pipette_color(cropped_img_hsv)
 
-    h, s, v = dominant_color
-    h_std = np.std(cropped_img_hsv[:, :, 0])
-    s_std = np.std(cropped_img_hsv[:, :, 1])
-    v_std = np.std(cropped_img_hsv[:, :, 2])
+#     h, s, v = dominant_color
+#     h_std = np.std(cropped_img_hsv[:, :, 0])
+#     s_std = np.std(cropped_img_hsv[:, :, 1])
+#     v_std = np.std(cropped_img_hsv[:, :, 2])
 
-    h_tolerance = int(h_std * 1.5)
-    s_tolerance = int(s_std * 1.5)
-    v_tolerance = int(v_std * 1.5)
+#     h_tolerance = int(h_std * 1.5)
+#     s_tolerance = int(s_std * 1.5)
+#     v_tolerance = int(v_std * 1.5)
 
-    lower_bound = np.array([max(0, h - h_tolerance), 
-                        max(0, s - s_tolerance), 
-                        max(0, v - v_tolerance)])
+#     lower_bound = np.array([max(0, h - h_tolerance), 
+#                         max(0, s - s_tolerance), 
+#                         max(0, v - v_tolerance)])
 
-    upper_bound = np.array([min(179, h + h_tolerance), 
-                        min(255, s + s_tolerance), 
-                        min(255, v + v_tolerance)])
+#     upper_bound = np.array([min(179, h + h_tolerance), 
+#                         min(255, s + s_tolerance), 
+#                         min(255, v + v_tolerance)])
 
-    binary_mask = cv2.inRange(img_hsv, lower_bound, upper_bound)
-    inv_binary_img = cv2.bitwise_not(binary_mask)
+#     binary_mask = cv2.inRange(img_hsv, lower_bound, upper_bound)
+#     inv_binary_img = cv2.bitwise_not(binary_mask)
 
-    return binary_mask, inv_binary_img
+#     return binary_mask, inv_binary_img
 
 
-def find_playfield_exteral_borders(
-    original_img: array_like,
-    binary_mask: array_like, 
-    kernel_size: tuple[int, int] = (21, 21), 
-    canny_thresh_lower: int = 150, 
-    canny_thresh_upper: int = 200, 
-    hough_thresh: int = 100, 
-    hough_min_line_len: int = 100, 
-    hough_max_line_gap: int = 10,
-    group_lines_thresh_intercept: int = 100) -> tuple[list[Intersection], list[LineGroup], array_like]:
-    """
-    Find external borders of a playfield by detecting lines and their intersections.
+# def find_playfield_exteral_borders(
+#     original_img: array_like,
+#     binary_mask: array_like, 
+#     kernel_size: tuple[int, int] = (21, 21), 
+#     canny_thresh_lower: int = 150, 
+#     canny_thresh_upper: int = 200, 
+#     hough_thresh: int = 100, 
+#     hough_min_line_len: int = 100, 
+#     hough_max_line_gap: int = 10,
+#     group_lines_thresh_intercept: int = 100) -> tuple[list[Intersection], list[LineGroup], array_like]:
+#     """
+#     Find external borders of a playfield by detecting lines and their intersections.
     
-    The function processes a binary mask to detect straight line segments using
-    morphological operations, Canny edge detection, and Hough line transformation.
-    It groups similar lines and finds their intersection points to define the
-    playfield boundaries.
+#     The function processes a binary mask to detect straight line segments using
+#     morphological operations, Canny edge detection, and Hough line transformation.
+#     It groups similar lines and finds their intersection points to define the
+#     playfield boundaries.
     
-    Process:
-        1. Apply morphological close operation to fill gaps in the binary mask
-        2. Detect edges using Canny edge detection
-        3. Find line segments using probabilistic Hough line transformation
-        4. Group similar lines together
-        5. Calculate intersection points between all pairs of line groups
-        6. Create visualization with lines and intersection points
+#     Process:
+#         1. Apply morphological close operation to fill gaps in the binary mask
+#         2. Detect edges using Canny edge detection
+#         3. Find line segments using probabilistic Hough line transformation
+#         4. Group similar lines together
+#         5. Calculate intersection points between all pairs of line groups
+#         6. Create visualization with lines and intersection points
     
-    Args:
-        original_img: Original RGB image for visualization
-        binary_mask: Binary mask image to process
-        kernel_size: Size of the morphological kernel for closing operation (default (21, 21))
-        canny_thresh_lower: Lower threshold for Canny edge detection (default 150)
-        canny_thresh_upper: Upper threshold for Canny edge detection (default 200)
-        hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
-        hough_min_line_len: Minimum line length in pixels (default 100)
-        hough_max_line_gap: Maximum gap between line segments to connect (default 10)
-        group_lines_thresh_intercept: Maximum intercept difference to group lines (default 100)
+#     Args:
+#         original_img: Original RGB image for visualization
+#         binary_mask: Binary mask image to process
+#         kernel_size: Size of the morphological kernel for closing operation (default (21, 21))
+#         canny_thresh_lower: Lower threshold for Canny edge detection (default 150)
+#         canny_thresh_upper: Upper threshold for Canny edge detection (default 200)
+#         hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
+#         hough_min_line_len: Minimum line length in pixels (default 100)
+#         hough_max_line_gap: Maximum gap between line segments to connect (default 10)
+#         group_lines_thresh_intercept: Maximum intercept difference to group lines (default 100)
     
-    Returns:
-        Tuple containing:
-            - list[Intersection]: List of intersection points between line groups
-            - list[LineGroup]: List of grouped line objects representing detected borders
-            - array_like: Visualization image with lines drawn in blue and intersection points in red
+#     Returns:
+#         Tuple containing:
+#             - list[Intersection]: List of intersection points between line groups
+#             - list[LineGroup]: List of grouped line objects representing detected borders
+#             - array_like: Visualization image with lines drawn in blue and intersection points in red
     
-    Note:
-        The function expects a binary mask where white pixels represent the area to analyze.
-        Intersection points and line groups can be used to reconstruct the playfield boundary.
-    """
-    binary_mask_close = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, np.ones(kernel_size, np.uint8))
-    straightened_binary_mask_close = _straighten_mask(binary_mask_close)
-    edges = cv2.Canny(straightened_binary_mask_close, canny_thresh_lower, canny_thresh_upper)
-    segments = cv2.HoughLinesP(
-        edges, 
-        1, 
-        np.pi / 180, 
-        threshold=hough_thresh, 
-        minLineLength=hough_min_line_len, 
-        maxLineGap=hough_max_line_gap
-    )
+#     Note:
+#         The function expects a binary mask where white pixels represent the area to analyze.
+#         Intersection points and line groups can be used to reconstruct the playfield boundary.
+#     """
+#     binary_mask_close = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, np.ones(kernel_size, np.uint8))
+#     straightened_binary_mask_close = _straighten_mask(binary_mask_close)
+#     edges = cv2.Canny(straightened_binary_mask_close, canny_thresh_lower, canny_thresh_upper)
+#     segments = cv2.HoughLinesP(
+#         edges, 
+#         1, 
+#         np.pi / 180, 
+#         threshold=hough_thresh, 
+#         minLineLength=hough_min_line_len, 
+#         maxLineGap=hough_max_line_gap
+#     )
 
-    lines = _convert_hough_segments_to_lines(segments)
-    lines = group_lines(lines, thresh_intercept=group_lines_thresh_intercept)
-    lines = _select_lines(lines)
-    intersections = compute_intersections(lines, binary_mask)
+#     lines = _convert_hough_segments_to_lines(segments)
+#     lines = group_lines(lines, thresh_intercept=group_lines_thresh_intercept)
+#     lines = _select_lines(lines)
+#     intersections = compute_intersections(lines, binary_mask)
 
-    pic_copy = original_img.copy()
-    for intersection, line in zip(intersections, lines):
-        pt = intersection.point.as_int()
-        end_pts = line.limit_to_img(pic_copy)
-        cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
-        cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
+#     pic_copy = original_img.copy()
+#     for intersection, line in zip(intersections, lines):
+#         pt = intersection.point.as_int()
+#         end_pts = line.limit_to_img(pic_copy)
+#         cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
+#         cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
 
                 
-    return intersections, lines, pic_copy, binary_mask_close
+#     return intersections, lines, pic_copy, binary_mask_close
 
 
-def blackout_pixels_outside_borders(
-    intersections: list[Intersection],
-    inv_binary_img: array_like,
-    lines: list[LineGroup],
-    line_buffer_distance: int = 5
-    ) -> array_like:
-    """
-    Convert white pixels to black outside of the external playfield borders.
+# def blackout_pixels_outside_borders(
+#     intersections: list[Intersection],
+#     inv_binary_img: array_like,
+#     lines: list[LineGroup],
+#     line_buffer_distance: int = 5
+#     ) -> array_like:
+#     """
+#     Convert white pixels to black outside of the external playfield borders.
     
-    Makes white pixels to black outside external borders. The function uses a two-step masking approach to isolate the playfield:
-    1. Creates a convex hull from intersection points to define the main playfield area
-    2. Applies line-based masking to black out a buffer zone on the opposite side of detected lines
+#     Makes white pixels to black outside external borders. The function uses a two-step masking approach to isolate the playfield:
+#     1. Creates a convex hull from intersection points to define the main playfield area
+#     2. Applies line-based masking to black out a buffer zone on the opposite side of detected lines
     
-    This approach helps isolate the actual playfield area by removing areas outside the detected
-    borders while accounting for line detection artifacts.
+#     This approach helps isolate the actual playfield area by removing areas outside the detected
+#     borders while accounting for line detection artifacts.
     
-    Args:
-        intersections: List of Intersection objects representing corners/boundary points of the playfield
-        inv_binary_img: Inverted binary image where detected playfield color is black
-        lines: List of LineGroup objects representing detected border lines
-        line_buffer_distance: Distance in pixels to black out on the opposite side of lines (default 5)
+#     Args:
+#         intersections: List of Intersection objects representing corners/boundary points of the playfield
+#         inv_binary_img: Inverted binary image where detected playfield color is black
+#         lines: List of LineGroup objects representing detected border lines
+#         line_buffer_distance: Distance in pixels to black out on the opposite side of lines (default 5)
     
-    Returns:
-        Binary image with white pixels converted to black outside the playfield borders
+#     Returns:
+#         Binary image with white pixels converted to black outside the playfield borders
     
-    Note:
-        The function draws black lines with thickness `line_buffer_distance * 2` to create a buffer
-        zone around detected lines, effectively masking out areas on the opposite side of the lines.
-        This helps remove artifacts and isolate the actual playfield area.
-    """
-    intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in intersections])
-    hull = cv2.convexHull(intersection_points)
+#     Note:
+#         The function draws black lines with thickness `line_buffer_distance * 2` to create a buffer
+#         zone around detected lines, effectively masking out areas on the opposite side of the lines.
+#         This helps remove artifacts and isolate the actual playfield area.
+#     """
+#     intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in intersections])
+#     hull = cv2.convexHull(intersection_points)
 
-    height, width = inv_binary_img.shape
-    mask = np.zeros((height, width), dtype=np.uint8)
+#     height, width = inv_binary_img.shape
+#     mask = np.zeros((height, width), dtype=np.uint8)
 
-    cv2.fillPoly(mask, [hull], 255)
+#     cv2.fillPoly(mask, [hull], 255)
 
-    for line in lines:
-        pts = line.limit_to_img(mask)
-        if pts:
-            pt1, pt2 = pts
-            cv2.line(mask, (int(pt1.x), int(pt1.y)), (int(pt2.x), int(pt2.y)), 0, line_buffer_distance * 2)
+#     for line in lines:
+#         pts = line.limit_to_img(mask)
+#         if pts:
+#             pt1, pt2 = pts
+#             cv2.line(mask, (int(pt1.x), int(pt1.y)), (int(pt2.x), int(pt2.y)), 0, line_buffer_distance * 2)
 
-    return cv2.bitwise_and(inv_binary_img, mask)
+#     return cv2.bitwise_and(inv_binary_img, mask)
 
 
 def find_playfield_internal_sideline_borders(
@@ -611,26 +640,26 @@ def find_playfield_internal_sideline_borders(
     return lines
 
 
-def find_top_internal_cushion(
-    blackout_img: array_like,
+# def find_top_internal_cushion(
+#     blackout_img: array_like,
 
-    ) -> Line | None:
+#     ) -> Line | None:
 
-    smoothed_binary_mask = _straighten_mask(blackout_img)
-    edges = cv2.Canny(smoothed_binary_mask, 150, 200)
-    segments = cv2.HoughLinesP(
-        edges, 
-        1, 
-        np.pi / 180, 
-        threshold=100, 
-        minLineLength=100, 
-        maxLineGap=10
-    )
+#     smoothed_binary_mask = _straighten_mask(blackout_img)
+#     edges = cv2.Canny(smoothed_binary_mask, 150, 200)
+#     segments = cv2.HoughLinesP(
+#         edges, 
+#         1, 
+#         np.pi / 180, 
+#         threshold=100, 
+#         minLineLength=100, 
+#         maxLineGap=10
+#     )
 
-    lines = _convert_hough_segments_to_lines(segments)
-    lines = group_lines(lines, thresh_intercept=100)
-    lines = _select_lines(lines)
-    intersections = compute_intersections(lines, binary_mask)
+#     lines = _convert_hough_segments_to_lines(segments)
+#     lines = group_lines(lines, thresh_intercept=100)
+#     lines = _select_lines(lines)
+#     intersections = compute_intersections(lines, binary_mask)
 
     # pic_copy = pic.copy()
     # for line in lines:
@@ -699,80 +728,80 @@ def find_baulk_line(
         return None
 
 
-def find_bottom_internal_cushion(
-    original_image: array_like,
-    intersection_points: np.ndarray,
-    ) -> Line | None:
-    """
-    Find the bottom internal cushion of the playfield by detecting edge in the lower portion of cropped image.
+# def find_bottom_internal_cushion(
+#     original_image: array_like,
+#     intersection_points: np.ndarray,
+#     ) -> Line | None:
+#     """
+#     Find the bottom internal cushion of the playfield by detecting edge in the lower portion of cropped image.
     
-    The function processes the bottom portion of a cropped playfield image (lower 10%) to detect
-    the bottom internal cushion (the bottom boundary of the playing area). It uses CLAHE contrast
-    enhancement, Gaussian blur, Sobel gradient detection, and peak finding to locate the horizontal
-    edge between the darker playing surface and the lighter cushion (randa) border.
+#     The function processes the bottom portion of a cropped playfield image (lower 10%) to detect
+#     the bottom internal cushion (the bottom boundary of the playing area). It uses CLAHE contrast
+#     enhancement, Gaussian blur, Sobel gradient detection, and peak finding to locate the horizontal
+#     edge between the darker playing surface and the lighter cushion (randa) border.
     
-    Process:
-        1. Crop the image to the bounding box defined by intersection points
-        2. Extract the bottom 10% region of interest (ROI) from the cropped image
-        3. Exclude bottom 10% of ROI to ignore dark border
-        4. Convert ROI to HSV color space and extract channels
-        5. Create green color mask to filter only green pixels (avoid objects in ROI)
-        6. Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to enhance contrast
-        7. Apply bilateral filter to reduce noise
-        8. Compute vertical gradient using Sobel operator to detect horizontal edges
-        9. Apply green mask to gradient (only consider green pixels)
-        10. Calculate row-wise gradient response using 90th percentile per row
-        11. Smooth the gradient response using Gaussian convolution
-        12. Find the row with maximum gradient response (strongest horizontal edge)
-        13. Convert the edge position from cropped coordinates to global image coordinates
-        14. Return a horizontal Line object representing the bottom internal cushion
+#     Process:
+#         1. Crop the image to the bounding box defined by intersection points
+#         2. Extract the bottom 10% region of interest (ROI) from the cropped image
+#         3. Exclude bottom 10% of ROI to ignore dark border
+#         4. Convert ROI to HSV color space and extract channels
+#         5. Create green color mask to filter only green pixels (avoid objects in ROI)
+#         6. Apply CLAHE (Contrast Limited Adaptive Histogram Equalization) to enhance contrast
+#         7. Apply bilateral filter to reduce noise
+#         8. Compute vertical gradient using Sobel operator to detect horizontal edges
+#         9. Apply green mask to gradient (only consider green pixels)
+#         10. Calculate row-wise gradient response using 90th percentile per row
+#         11. Smooth the gradient response using Gaussian convolution
+#         12. Find the row with maximum gradient response (strongest horizontal edge)
+#         13. Convert the edge position from cropped coordinates to global image coordinates
+#         14. Return a horizontal Line object representing the bottom internal cushion
     
-    Args:
-        original_image: Input image as numpy array or compatible array-like object
-        intersection_points: Array of intersection points defining the bounding box for cropping.
-                            Should be a numpy array with shape (N, 2) where each row is [x, y]
+#     Args:
+#         original_image: Input image as numpy array or compatible array-like object
+#         intersection_points: Array of intersection points defining the bounding box for cropping.
+#                             Should be a numpy array with shape (N, 2) where each row is [x, y]
     
-    Returns:
-        Line | None: Line object representing the bottom internal cushion as a horizontal line
-                    in global image coordinates, or None if detection fails. The line connects
-                    the left and right edges of the image at the detected cushion height.
+#     Returns:
+#         Line | None: Line object representing the bottom internal cushion as a horizontal line
+#                     in global image coordinates, or None if detection fails. The line connects
+#                     the left and right edges of the image at the detected cushion height.
     
-    Note:
-        The bottom cushion is typically a near-horizontal edge that separates the darker green
-        playing surface from the lighter green cushion (randa) border. The method works on the
-        lower portion of the cropped playfield where this edge is most visible, using gradient
-        analysis to find the strongest horizontal transition. Only green pixels are considered
-        to avoid interference from objects that may be present in the ROI.
-    """
-    cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
+#     Note:
+#         The bottom cushion is typically a near-horizontal edge that separates the darker green
+#         playing surface from the lighter green cushion (randa) border. The method works on the
+#         lower portion of the cropped playfield where this edge is most visible, using gradient
+#         analysis to find the strongest horizontal transition. Only green pixels are considered
+#         to avoid interference from objects that may be present in the ROI.
+#     """
+#     cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
 
-    H = cropped_by_points.height
-    roi = cropped_by_points[int(0.95*H):] 
+#     H = cropped_by_points.height
+#     roi = cropped_by_points[int(0.95*H):] 
 
-    hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
-    h, s, v = cv2.split(hsv_img)  
+#     hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
+#     h, s, v = cv2.split(hsv_img)  
 
-    egdes = cv2.Canny(v, 10, 50)
+#     egdes = cv2.Canny(v, 10, 50)
 
-    segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 25) # 50
+#     segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 25) # 50
 
-    if segments is not None:
-        lines = _convert_hough_segments_to_lines(segments)
-        lines = [line for line in lines if line.slope == 0]
-        if lines:
-            bottom_line_local = sorted(lines, key=lambda line: line.intercept)[0]
+#     if segments is not None:
+#         lines = _convert_hough_segments_to_lines(segments)
+#         lines = [line for line in lines if line.slope == 0]
+#         if lines:
+#             bottom_line_local = sorted(lines, key=lambda line: line.intercept)[0]
             
-            roi_y_start = int(0.95 * H)
+#             roi_y_start = int(0.95 * H)
             
-            bottom_line_global = transform_line(
-                bottom_line_local, 
-                roi, 
-                x_start,         
-                y_start + roi_y_start
-            )
+#             bottom_line_global = transform_line(
+#                 bottom_line_local, 
+#                 roi, 
+#                 x_start,         
+#                 y_start + roi_y_start
+#             )
             
-            return bottom_line_global
-        else:
-            return None
-    else:
-        return None
+#             return bottom_line_global
+#         else:
+#             return None
+#     else:
+#         return None
