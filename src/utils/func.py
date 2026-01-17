@@ -613,57 +613,29 @@ def find_playfield_internal_sideline_borders(
 
 def find_top_internal_cushion(
     blackout_img: array_like,
-    hough_thresh: int = 100,
-    hough_min_line_len: int = 200,
-    hough_max_line_gap: int = 10,
-    ) -> Line | None:
-    """
-    Find the top internal cushion of a playfield by detecting horizontal line segments.
-    
-    The function processes a blackout image (where playfield area has been isolated)
-    to detect the top internal cushion using probabilistic Hough line transformation.
-    It filters for near-horizontal lines (low slope) and selects the highest one
-    (lowest intercept value) to represent the top cushion.
-    
-    Process:
-        1. Apply probabilistic Hough line transformation to detect line segments
-        2. Convert detected segments to Line objects
-        3. Filter for near-horizontal lines (abs(slope) < 2) with valid intercept
-        4. Sort lines by intercept value (ascending)
-        5. Select the line with the lowest intercept (highest position in image)
-    
-    Args:
-        blackout_img: Binary image with isolated playfield (white pixels represent playfield)
-        hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
-        hough_min_line_len: Minimum line length in pixels (default 200)
-        hough_max_line_gap: Maximum gap between line segments to connect (default 10)
-    
-    Returns:
-        Line | None: Line object representing the top internal cushion (the line with
-                    the lowest intercept value), or None if no suitable lines are found
-    
-    Note:
-        The function is designed to detect the top horizontal cushion, which is typically
-        a near-horizontal line. It filters for lines with small slope values (abs(slope) < 2)
-        and selects the one positioned highest in the image (lowest intercept value).
-    """
 
+    ) -> Line | None:
+
+    smoothed_binary_mask = _straighten_mask(blackout_img)
+    edges = cv2.Canny(smoothed_binary_mask, 150, 200)
     segments = cv2.HoughLinesP(
-        blackout_img, 
+        edges, 
         1, 
         np.pi / 180, 
-        threshold=hough_thresh, 
-        minLineLength=hough_min_line_len, 
-        maxLineGap=hough_max_line_gap
+        threshold=100, 
+        minLineLength=100, 
+        maxLineGap=10
     )
 
-    if segments is not None:
-        lines = _convert_hough_segments_to_lines(segments)
-        lines = [line for line in lines if line.intercept is not None and abs(line.slope) < 2]
-        lines = sorted(lines, key=lambda line: line.intercept)
-        return lines[0]
-    else:
-        return None
+    lines = _convert_hough_segments_to_lines(segments)
+    lines = group_lines(lines, thresh_intercept=100)
+    lines = _select_lines(lines)
+    intersections = compute_intersections(lines, binary_mask)
+
+    # pic_copy = pic.copy()
+    # for line in lines:
+    #     pts = line.limit_to_img(pic_copy)
+    #     cv2.line(pic_copy, *pts, (255, 0, 0), 2)
 
 
 def find_baulk_line(
