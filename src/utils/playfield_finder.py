@@ -225,6 +225,7 @@ class PlayfieldFinder:
         if segments is not None:
             lines = _convert_hough_segments_to_lines(segments)
             lines = [line for line in lines if line.slope == 0]
+            lines = group_lines(lines)
             if lines:
                 bottom_line_local = sorted(lines, key=lambda line: line.intercept)[0]
                 
