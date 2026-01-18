@@ -1,5 +1,6 @@
 import cv2
 import matplotlib.pyplot as plt
+import numpy as np
 
 from .common import array_like
 from .intersections import Intersection
@@ -30,18 +31,21 @@ def plot_on_image(
     img: array_like, 
     intersections: list[Intersection] | None = None,
     lines: list[Line] | None = None, 
-    points: list[Point] | None = None, 
+    points: list[Point] | None = None,
+    polygons: list[list[Point] | np.ndarray] | None = None,
     is_copy: bool = True,
     line_color: tuple[int, int, int] = (255, 0, 0),
     point_color: tuple[int, int, int] = (0, 0, 255),
+    polygon_color: tuple[int, int, int] = (0, 255, 0),
     line_thickness: int = 2,
-    point_radius: int = 3
+    point_radius: int = 3,
+    polygon_thickness: int = 2
     ) -> array_like:
     """
-    Plot geometric objects (intersections, lines, points) on an image using OpenCV.
+    Plot geometric objects (intersections, lines, points, polygons) on an image using OpenCV.
     
     This function draws geometric primitives on an image for visualization purposes.
-    It supports drawing lines, points, and intersections with customizable colors,
+    It supports drawing lines, points, intersections, and polygons with customizable colors,
     line thickness, and point radius.
     
     Args:
@@ -49,11 +53,17 @@ def plot_on_image(
         intersections: List of Intersection objects to visualize
         lines: List of Line objects to draw
         points: List of Point objects to mark
+        polygons: List of polygons to draw. Each polygon can be:
+            - List of Point objects
+            - Numpy array of shape (n, 2) with [x, y] coordinates
+            - List of lists/tuples with [x, y] coordinates
         is_copy: Whether to create a copy of the image before drawing (default True)
         line_color: RGB color for lines (default (255, 0, 0) - red)
         point_color: RGB color for points and circles (default (0, 0, 255) - blue)
+        polygon_color: RGB color for polygons (default (0, 255, 0) - green)
         line_thickness: Thickness of the lines in pixels (default 2)
         point_radius: Radius of point circles in pixels (default 3)
+        polygon_thickness: Thickness of polygon lines in pixels (default 2)
     
     Returns:
         Image with geometric objects drawn on it
@@ -92,5 +102,20 @@ def plot_on_image(
                         line_color, line_thickness)
             pt = intersection.point.as_int() if hasattr(intersection.point, 'as_int') else intersection.point
             cv2.circle(img_copy, (int(pt.x), int(pt.y)), point_radius, point_color, -1)
+
+    if polygons is not None:
+        for polygon in polygons:
+            if not polygon or len(polygon) < 3:
+                continue
+            
+            if isinstance(polygon, np.ndarray):
+                pts = polygon.astype(np.int32)
+            elif isinstance(polygon[0], Point):
+                pts = np.array([[int(p.x), int(p.y)] for p in polygon], dtype=np.int32)
+            else:
+                pts = np.array([[int(p[0]), int(p[1])] for p in polygon], dtype=np.int32)
+            
+            cv2.polylines(img_copy, [pts.reshape(-1, 1, 2)], isClosed=True, 
+                         color=polygon_color, thickness=polygon_thickness)
 
     return img_copy

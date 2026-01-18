@@ -21,6 +21,12 @@ pics/
 *.webp
 *.json
 *.pt
-
+*.xlsx
+*.xls
+*.ods  
+*.ods
+*.csv
+*.pdf
+*.txt
 
 .DS_Store
