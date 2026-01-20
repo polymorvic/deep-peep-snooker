@@ -4,22 +4,12 @@ import numpy as np
 
 from .intersections import compute_intersections, Intersection
 from .func import (crop_center, pipette_color,
-                   _straighten_mask, _convert_hough_segments_to_lines,
-                   group_lines, _select_lines, crop_image_by_points, sanitize_lines
+                   straighten_binary_mask, convert_hough_segments_to_lines,
+                   group_lines, select_lines, crop_image_by_points, sanitize_lines, crop_and_split
                    )
-from .lines import transform_line
-                   
 
-
-
-    # find_playfield_exteral_borders, 
-    # blackout_pixels_outside_borders,
-    # find_playfield_internal_sideline_borders, 
-    # find_top_internal_cushion, find_baulk_line, 
-    # find_bottom_internal_cushion)
-
-
-from .lines import Line
+from .lines import Line, transform_line
+from .plotting import display_img
 from .points import Point
 
 
@@ -76,42 +66,60 @@ class PlayfieldFinder:
     
 
     def _preprocess_image(
-            self, 
-            kernel_size: tuple[int, int] = (21, 21),
-            canny_thresh_lower: int = 150, 
-            canny_thresh_upper: int = 200, 
-            hough_thresh: int = 100, 
-            hough_min_line_len: int = 100, 
-            hough_max_line_gap: int = 10,
-            group_lines_thresh_intercept: int = 100) -> None:
+        self, 
+        kernel_size: int = 21,
+        canny_thresh_lower: int = 150, 
+        canny_thresh_upper: int = 200, 
+        hough_thresh: int = 50, 
+        hough_min_line_len: int = 100, 
+        hough_max_line_gap: int = 25
+        ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
         img_hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
-        cropped_img_hsv = crop_center(img_hsv)
+        upper_img_hsv, lower_img_hsv = crop_and_split(img_hsv)
+        upper_img_rgb, lower_img_rgb = crop_and_split(self.img)
 
-        h, s, v = pipette_color(cropped_img_hsv)
-        h_std = np.std(cropped_img_hsv[:, :, 0])
-        s_std = np.std(cropped_img_hsv[:, :, 1])
-        v_std = np.std(cropped_img_hsv[:, :, 2])
+        h_u, s_u, v_u = pipette_color(upper_img_hsv)
+        h_std_u = np.std(upper_img_hsv[:, :, 0])
+        s_std_u = np.std(upper_img_hsv[:, :, 1])
+        v_std_u = np.std(upper_img_hsv[:, :, 2])
+        h_tol_u = int(h_std_u * 1.5)
+        s_tol_u = int(s_std_u * 1.5)
+        v_tol_u = int(v_std_u * 1.5)
+        lower_bound_u = np.array([max(0, h_u - h_tol_u), max(0, s_u - s_tol_u), max(0, v_u - v_tol_u)])
+        upper_bound_u = np.array([min(179, h_u + h_tol_u), min(255, s_u + s_tol_u), min(255, v_u + v_tol_u)])
+        upper_binary = cv2.inRange(upper_img_hsv, lower_bound_u, upper_bound_u)
 
+        h_l, s_l, v_l = pipette_color(lower_img_hsv)
+        h_std_l = np.std(lower_img_hsv[:, :, 0])
+        s_std_l = np.std(lower_img_hsv[:, :, 1])
+        v_std_l = np.std(lower_img_hsv[:, :, 2])
+        h_tol_l = int(h_std_l * 1.5)
+        s_tol_l = int(s_std_l * 1.5)
+        v_tol_l = int(v_std_l * 1.5)
+        lower_bound_l = np.array([max(0, h_l - h_tol_l), max(0, s_l - s_tol_l), max(0, v_l - v_tol_l)])
+        upper_bound_l = np.array([min(179, h_l + h_tol_l), min(255, s_l + s_tol_l), min(255, v_l + v_tol_l)])
+        lower_binary = cv2.inRange(lower_img_hsv, lower_bound_l, upper_bound_l)
+
+        combined_binary = np.vstack([upper_binary, lower_binary])
+        
+        combined_img_rgb = np.vstack([upper_img_rgb, lower_img_rgb])
+        combined_img_hsv = cv2.cvtColor(combined_img_rgb, cv2.COLOR_RGB2HSV)
+        h, s, v = pipette_color(combined_img_hsv)
+        h_std = np.std(combined_img_hsv[:, :, 0])
+        s_std = np.std(combined_img_hsv[:, :, 1])
+        v_std = np.std(combined_img_hsv[:, :, 2])
         h_tolerance = int(h_std * 1.5)
         s_tolerance = int(s_std * 1.5)
         v_tolerance = int(v_std * 1.5)
-
-        lower_bound = np.array([max(0, h - h_tolerance), 
-                            max(0, s - s_tolerance), 
-                            max(0, v - v_tolerance)])
-
-        upper_bound = np.array([min(179, h + h_tolerance), 
-                            min(255, s + s_tolerance), 
-                            min(255, v + v_tolerance)])
+        lower_bound = np.array([max(0, h - h_tolerance), max(0, s - s_tolerance), max(0, v - v_tolerance)])
+        upper_bound = np.array([min(179, h + h_tolerance), min(255, s + s_tolerance), min(255, v + v_tolerance)])
 
         binary_mask = cv2.inRange(img_hsv, lower_bound, upper_bound)
         inv_binary_img = cv2.bitwise_not(binary_mask)
 
-        binary_mask_close = cv2.morphologyEx(binary_mask, cv2.MORPH_CLOSE, np.ones(kernel_size, np.uint8))
-        straightened_binary_mask_close = _straighten_mask(binary_mask_close)
-
-        edges = cv2.Canny(straightened_binary_mask_close, canny_thresh_lower, canny_thresh_upper)
+        straighted_binary_mask, binary_mask_close, _ = straighten_binary_mask(binary_mask, kernel_size)
+        edges = cv2.Canny(straighted_binary_mask, canny_thresh_lower, canny_thresh_upper)
         segments = cv2.HoughLinesP(
             edges, 
             1, 
@@ -120,77 +128,78 @@ class PlayfieldFinder:
             minLineLength=hough_min_line_len, 
             maxLineGap=hough_max_line_gap
         )
-
-        lines = _convert_hough_segments_to_lines(segments)
-        if any(line.slope is None for line in lines):
-            lines = sanitize_lines(lines)
-
-        lines = group_lines(lines, thresh_intercept=group_lines_thresh_intercept)
-        lines = _select_lines(lines)
+        copy_edges = self.img.copy()
+        for segment in segments:
+            x1, y1, x2, y2 = segment[0]
+            cv2.line(copy_edges, (x1, y1), (x2, y2), (255, 0, 0), 5)
+        
+        lines = convert_hough_segments_to_lines(segments)
+        lines = select_lines(lines)
         intersections = compute_intersections(lines, self.img)
 
         pic_copy = self.img.copy()
         for intersection, line in zip(intersections, lines):
             pt = intersection.point.as_int()
             end_pts = line.limit_to_img(pic_copy)
-            cv2.line(pic_copy, *end_pts, (255, 0, 0), 1)
-            cv2.circle(pic_copy, pt, 2,(0, 0, 255), -1)
+            cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
+            cv2.circle(pic_copy, pt, 2,(0, 0, 255), 2)
+
+        # display_img(upper_img_rgb)
+        # display_img(lower_img_rgb)
+        # display_img(inv_binary_img)
+        # display_img(binary_mask_close)
+        # display_img(straighted_binary_mask)
+        # display_img(edges)
+        # display_img(copy_edges)
+        # display_img(pic_copy)
+        # return binary_mask, binary_mask_close, straighted_binary_mask, edges, copy_edges, pic_copy
 
         self.preprocessed_img = pic_copy
-        self.straighted_mask = straightened_binary_mask_close
+        self.straighted_mask = straighted_binary_mask
         self.external_edges_intersection_points = PlayfieldFinder.intersection_to_points_array(intersections)
 
 
-    # def find_side_cushions(self, slope_threshold: float = 0.1) -> tuple[Line, Line]:
-    #     """
-    #     Find the closest line on the left side and the closest line on the right side of the center.
-    #     Excludes horizontal lines (slope close to zero).
-        
-    #     Args:
-    #         slope_threshold: Lines with absolute slope less than this value are excluded (default: 0.1)
-        
-    #     Returns:
-    #         Tuple containing (left_line, right_line) - the closest lines on each side
-    #     """
+    def find_top_internal_cushion(self) -> Line | None:
+        cropped_by_points, x_start, y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
 
-    #     binary_mask, inv_binary_img = binarize_playfield(self.img)
-    #     external_intersections, external_lines, _ = find_playfield_exteral_borders(self.img, binary_mask)
-    #     blackout_img = blackout_pixels_outside_borders(external_intersections, inv_binary_img, external_lines)
-    #     return find_playfield_internal_sideline_borders(blackout_img)
+        # display_img(cropped_by_points)
+
+        H = cropped_by_points.height
+        roi = cropped_by_points[:int(0.05*H)] 
 
 
-    # def find_top_internal_cushion(self) -> Line | None:
-    #     """
-    #     Find the top internal cushion of the playfield.
+        # display_img(roi)
+
+        hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
+        _, _, v = cv2.split(hsv_img)
+
+        egdes = cv2.Canny(v, 150, 150)
+        segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 150, 150, 100, 20)
+        if segments is not None:
+            lines = convert_hough_segments_to_lines(segments)
+            lines = [line for line in lines if line.slope == 0]
+            lines_grouped = group_lines(lines, thresh_intercept=100)
+
+
+            # print(lines_grouped)
+
+            # cv2.line(roi, *lines_grouped[0].limit_to_img(roi), (255, 0, 0), 1)
+            # display_img(roi)
+
+            if lines_grouped:
+                top_line_global = transform_line(
+                    lines_grouped[0], 
+                    roi, 
+                    x_start, 
+                    y_start
+                )
+                return top_line_global
+            else:
+                return None
         
-    #     The method processes the image to isolate the playfield area and then detects
-    #     the top horizontal cushion (the top boundary of the playing area). It uses
-    #     probabilistic Hough line transformation to detect near-horizontal lines and
-    #     selects the one positioned highest in the image (lowest intercept value).
+        else:
+            return None
         
-    #     Process:
-    #         1. Binarize the image to isolate the playfield area
-    #         2. Detect external borders of the playfield
-    #         3. Create a blackout image with pixels outside borders removed
-    #         4. Detect line segments in the blackout image using Hough transform
-    #         5. Filter for near-horizontal lines (abs(slope) < 2)
-    #         6. Sort lines by intercept value (ascending)
-    #         7. Return the line with the lowest intercept (highest position)
-        
-    #     Returns:
-    #         Line | None: Line object representing the top internal cushion (the line
-    #                     with the lowest intercept value), or None if no suitable lines
-    #                     are found
-        
-    #     Note:
-    #         The top cushion is typically a near-horizontal line that defines the upper
-    #         boundary of the playing area. The method filters out vertical and highly
-    #         sloped lines to focus on horizontal boundaries.
-    #     """
-    #     binary_mask, inv_binary_img = binarize_playfield(self.img)
-    #     external_intersections, external_lines, _, _ = find_playfield_exteral_borders(self.img, binary_mask)
-    #     blackout_img = blackout_pixels_outside_borders(external_intersections, inv_binary_img, external_lines)
-    #     return find_top_internal_cushion(blackout_img)
 
 
     # def find_baulk_line(self) -> Line | None:
@@ -216,16 +225,21 @@ class PlayfieldFinder:
         H = cropped_by_points.height
         roi = cropped_by_points[int(0.95*H):] 
 
+        # display_img(roi)
+
         hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
         _, _, v = cv2.split(hsv_img)  
 
         egdes = cv2.Canny(v, 10, 50)
-        segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 25)
+        # display_img(egdes)
+        segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 50)
 
         if segments is not None:
-            lines = _convert_hough_segments_to_lines(segments)
+            lines = convert_hough_segments_to_lines(segments)
             lines = [line for line in lines if line.slope == 0]
+            # print(lines)
             lines = group_lines(lines)
+            # print('lines grouped: ', lines)
             if lines:
                 bottom_line_local = sorted(lines, key=lambda line: line.intercept)[0]
                 
