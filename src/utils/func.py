@@ -42,7 +42,7 @@ def _crop_edges(arr: np.ndarray | NumpyImage, top: float = 0, bottom: float = 0,
     return arr[y0:y1, x0:x1]
 
 
-def crop_and_split(arr: np.ndarray | NumpyImage, percent: float = 0.6) -> tuple[np.ndarray | NumpyImage, np.ndarray | NumpyImage]:
+def crop_and_split(arr: np.ndarray | NumpyImage, percent: float = 0.6) -> tuple[np.ndarray | NumpyImage, np.ndarray | NumpyImage, int]:
     split_h = arr.shape[0] // 2
     upper_arr = arr[:split_h]
     lower_arr = arr[split_h:]
@@ -51,7 +51,28 @@ def crop_and_split(arr: np.ndarray | NumpyImage, percent: float = 0.6) -> tuple[
     upper_arr = _crop_edges(upper_arr, top=crop_pct, left=crop_pct, right=crop_pct)
     lower_arr = _crop_edges(lower_arr, bottom=crop_pct, left=crop_pct, right=crop_pct)
     
-    return upper_arr, lower_arr
+    return upper_arr, lower_arr, split_h
+
+
+def compute_adaptive_hsv_bounds(hsv_img: np.ndarray | NumpyImage, std_factor: float = 1.5) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Compute adaptive HSV bounds for a given HSV image.
+
+    Args:
+        hsv_img: HSV image as numpy array or NumpyImage
+        std_factor: Factor to multiply the standard deviations by
+    Returns:
+        Tuple containing lower and upper HSV bounds
+    """
+    h, s, v = pipette_color(hsv_img)
+
+    stds = np.std(hsv_img, axis=(0, 1))
+    tolerances = (stds * std_factor).astype(int)
+
+    lower = np.clip([h, s, v] - tolerances, [0, 0, 0], [179, 255, 255])
+    upper = np.clip([h, s, v] + tolerances, [0, 0, 0], [179, 255, 255])
+
+    return lower, upper
 
 
 def straighten_binary_mask(binary_mask: np.ndarray, kernel_size: int) -> np.ndarray:
