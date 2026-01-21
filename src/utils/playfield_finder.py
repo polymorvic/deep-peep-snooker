@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .intersections import compute_intersections, Intersection
-from .func import (crop_center, pipette_color,
+from .func import (compute_adaptive_hsv_bounds, pipette_color,
                    straighten_binary_mask, convert_hough_segments_to_lines,
                    group_lines, select_lines, crop_image_by_points, sanitize_lines, crop_and_split
                    )
@@ -38,6 +38,9 @@ class PlayfieldFinder:
         self.center = self._get_center_point()
         self.vertical_axis = self._create_vertical_axis()
         self.horizontal_axis = self._create_horizontal_axis()
+
+        self.lower_bound_l = None
+        self.upper_bound_l = None
 
         self._preprocess_image()
 
@@ -76,46 +79,18 @@ class PlayfieldFinder:
         ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
         img_hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
-        upper_img_hsv, lower_img_hsv = crop_and_split(img_hsv)
-        upper_img_rgb, lower_img_rgb = crop_and_split(self.img)
+        upper_img_hsv_cropped, lower_img_hsv_cropped, split_h = crop_and_split(img_hsv)
 
-        h_u, s_u, v_u = pipette_color(upper_img_hsv)
-        h_std_u = np.std(upper_img_hsv[:, :, 0])
-        s_std_u = np.std(upper_img_hsv[:, :, 1])
-        v_std_u = np.std(upper_img_hsv[:, :, 2])
-        h_tol_u = int(h_std_u * 1.5)
-        s_tol_u = int(s_std_u * 1.5)
-        v_tol_u = int(v_std_u * 1.5)
-        lower_bound_u = np.array([max(0, h_u - h_tol_u), max(0, s_u - s_tol_u), max(0, v_u - v_tol_u)])
-        upper_bound_u = np.array([min(179, h_u + h_tol_u), min(255, s_u + s_tol_u), min(255, v_u + v_tol_u)])
-        upper_binary = cv2.inRange(upper_img_hsv, lower_bound_u, upper_bound_u)
+        upper_img_hsv = img_hsv[:split_h, :]
+        lower_img_hsv = img_hsv[split_h:, :]
 
-        h_l, s_l, v_l = pipette_color(lower_img_hsv)
-        h_std_l = np.std(lower_img_hsv[:, :, 0])
-        s_std_l = np.std(lower_img_hsv[:, :, 1])
-        v_std_l = np.std(lower_img_hsv[:, :, 2])
-        h_tol_l = int(h_std_l * 1.5)
-        s_tol_l = int(s_std_l * 1.5)
-        v_tol_l = int(v_std_l * 1.5)
-        lower_bound_l = np.array([max(0, h_l - h_tol_l), max(0, s_l - s_tol_l), max(0, v_l - v_tol_l)])
-        upper_bound_l = np.array([min(179, h_l + h_tol_l), min(255, s_l + s_tol_l), min(255, v_l + v_tol_l)])
-        lower_binary = cv2.inRange(lower_img_hsv, lower_bound_l, upper_bound_l)
+        self.lower_bound_u, self.upper_bound_u = compute_adaptive_hsv_bounds(upper_img_hsv_cropped)
+        self.lower_bound_l, self.upper_bound_l = compute_adaptive_hsv_bounds(lower_img_hsv_cropped)
 
-        combined_binary = np.vstack([upper_binary, lower_binary])
-        
-        combined_img_rgb = np.vstack([upper_img_rgb, lower_img_rgb])
-        combined_img_hsv = cv2.cvtColor(combined_img_rgb, cv2.COLOR_RGB2HSV)
-        h, s, v = pipette_color(combined_img_hsv)
-        h_std = np.std(combined_img_hsv[:, :, 0])
-        s_std = np.std(combined_img_hsv[:, :, 1])
-        v_std = np.std(combined_img_hsv[:, :, 2])
-        h_tolerance = int(h_std * 1.5)
-        s_tolerance = int(s_std * 1.5)
-        v_tolerance = int(v_std * 1.5)
-        lower_bound = np.array([max(0, h - h_tolerance), max(0, s - s_tolerance), max(0, v - v_tolerance)])
-        upper_bound = np.array([min(179, h + h_tolerance), min(255, s + s_tolerance), min(255, v + v_tolerance)])
+        upper_binary = cv2.inRange(upper_img_hsv, self.lower_bound_u, self.upper_bound_u)
+        lower_binary = cv2.inRange(lower_img_hsv, self.lower_bound_l, self.upper_bound_l)
 
-        binary_mask = cv2.inRange(img_hsv, lower_bound, upper_bound)
+        binary_mask = np.vstack([upper_binary, lower_binary])
         inv_binary_img = cv2.bitwise_not(binary_mask)
 
         straighted_binary_mask, binary_mask_close, _ = straighten_binary_mask(binary_mask, kernel_size)
@@ -144,8 +119,6 @@ class PlayfieldFinder:
             cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
             cv2.circle(pic_copy, pt, 2,(0, 0, 255), 2)
 
-        # display_img(upper_img_rgb)
-        # display_img(lower_img_rgb)
         # display_img(inv_binary_img)
         # display_img(binary_mask_close)
         # display_img(straighted_binary_mask)
@@ -173,7 +146,10 @@ class PlayfieldFinder:
         hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
         _, _, v = cv2.split(hsv_img)
 
-        egdes = cv2.Canny(v, 150, 150)
+        v_clahe = cv2.CLAHE(v, 1.0, (8, 8), None, (2, 2))
+        v_clahe.apply(v)
+
+        egdes = cv2.Canny(v_clahe, 150, 150)
         segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 150, 150, 100, 20)
         if segments is not None:
             lines = convert_hough_segments_to_lines(segments)
@@ -220,36 +196,40 @@ class PlayfieldFinder:
 
 
     def find_bottom_internal_cushion(self) -> Line | None:
-        cropped_by_points, x_start, y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
+        cropped_by_points, x_start, original_y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
 
         H = cropped_by_points.height
-        roi = cropped_by_points[int(0.95*H):] 
+        roi_y_start_local = int(0.95*H)
+        roi_y_end_local = H
+        
+        while True:
+            roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
+            hsv_roi = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
+            bin_roi = cv2.inRange(hsv_roi, self.lower_bound_l, self.upper_bound_l)
+            white_ratio = cv2.countNonZero(bin_roi) / bin_roi.size
 
-        # display_img(roi)
+            if white_ratio > 0.5:
+                break
+            roi_y_start_local -= 1
+            roi_y_end_local -= 1
 
-        hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
-        _, _, v = cv2.split(hsv_img)  
+        _, _, v = cv2.split(hsv_roi)
 
         egdes = cv2.Canny(v, 10, 50)
-        # display_img(egdes)
-        segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 50)
+        segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 25)
 
         if segments is not None:
             lines = convert_hough_segments_to_lines(segments)
             lines = [line for line in lines if line.slope == 0]
-            # print(lines)
             lines = group_lines(lines)
-            # print('lines grouped: ', lines)
             if lines:
                 bottom_line_local = sorted(lines, key=lambda line: line.intercept)[0]
-                
-                roi_y_start = int(0.95 * H)
                 
                 bottom_line_global = transform_line(
                     bottom_line_local, 
                     roi, 
                     x_start,         
-                    y_start + roi_y_start
+                    original_y_start + roi_y_start_local
                 )
                 
                 return bottom_line_global
