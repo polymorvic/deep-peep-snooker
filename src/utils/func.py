@@ -34,6 +34,25 @@ def crop_center(arr: np.ndarray | NumpyImage, percent: float = 0.75) -> np.ndarr
     return arr[y - r:y + r, x - r:x + r]
 
 
+def _find_stable_column(mask: np.ndarray, start_idx: int, end_idx: int, step: int) -> int | None:
+    """Find first column with stable height difference."""
+    prev_diffs = []
+    stability_window, tolerance = 5, 1
+    
+    for col_idx in range(start_idx, end_idx, step):
+        col_locs = np.argwhere(mask[:, col_idx] > 0)
+        if not col_locs.size:
+            continue
+        
+        col_diff = col_locs[:, 0].max() - col_locs[:, 0].min()
+        prev_diffs.append(col_diff)
+        
+        if len(prev_diffs) >= stability_window:
+            recent = prev_diffs[-stability_window:]
+            if max(recent) - min(recent) <= tolerance:
+                return col_idx
+    return None
+
 def _crop_edges(arr: np.ndarray | NumpyImage, top: float = 0, bottom: float = 0, left: float = 0, right: float = 0) -> np.ndarray | NumpyImage:
     """Crop array edges by percentage."""
     h, w = arr.shape[:2]
@@ -81,15 +100,34 @@ def straighten_binary_mask(binary_mask: np.ndarray, kernel_size: int) -> np.ndar
     binary_mask_close_open = cv2.morphologyEx(binary_mask_close, cv2.MORPH_OPEN, kernel)
     contours, _ = cv2.findContours(binary_mask_close_open, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-    if contours:
-        cnt = max(contours, key=cv2.contourArea)
-        straighted_binary_mask = np.zeros_like(binary_mask)
-        cv2.drawContours(straighted_binary_mask, [cnt], -1, 255, thickness=cv2.FILLED)
-        return straighted_binary_mask, binary_mask_close, binary_mask_close_open
-    else:
+    if not contours:
         return binary_mask, binary_mask_close, binary_mask_close_open
 
+    cnt = max(contours, key=cv2.contourArea)
+    straighted_binary_mask = np.zeros_like(binary_mask)
+    cv2.drawContours(straighted_binary_mask, [cnt], -1, 255, thickness=cv2.FILLED)
 
+    locs = np.argwhere(straighted_binary_mask > 0)
+    top_h = locs[:, 0].min()
+    bottom_h = locs[:, 0].max()
+
+    left_col = _find_stable_column(straighted_binary_mask, 0, straighted_binary_mask.shape[1], 1)
+    right_col = _find_stable_column(straighted_binary_mask, straighted_binary_mask.shape[1] - 1, -1, -1)
+    
+    if left_col is None or right_col is None:
+        return straighted_binary_mask, binary_mask_close, binary_mask_close_open
+    
+    left, right = int(min(left_col, right_col)), int(max(left_col, right_col))
+    span = right - left
+    inner_span = max(1, int(round(span * 0.2))) if span > 0 else 1
+    inner_left = left + (span - inner_span) // 2
+    inner_right = inner_left + inner_span
+
+    straighted_binary_mask[top_h:bottom_h+1, inner_left:inner_right+1] = 255
+
+    return straighted_binary_mask, binary_mask_close, binary_mask_close_open
+
+        
 def select_lines(lines: list[Line]) -> list[Line]:
     selected_lines = []
     slope_threshold = 0.1
