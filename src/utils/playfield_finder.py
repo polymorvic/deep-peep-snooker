@@ -152,24 +152,30 @@ class PlayfieldFinder:
         # display_img(roi)
         
         hsv_roi = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
-        bin_roi = cv2.inRange(hsv_roi, self.lower_bound_u, self.upper_bound_u)
+        lower_bound, upper_bound = compute_adaptive_hsv_bounds(hsv_roi)
+        bin_roi = cv2.inRange(hsv_roi, lower_bound, upper_bound)
 
         # display_img(bin_roi)
 
         count = 0
         tolerance = 3
+        break_row_idx = None
         
         for row_idx in range(bin_roi.shape[0]):
             ones_count = np.sum(bin_roi[row_idx, :] > 0)
 
             if ones_count > bin_roi.shape[1] // 2:
                 count += 1
-                if count >= tolerance:
-                    break
+                if count >= tolerance and break_row_idx is None:
+                    break_row_idx = row_idx
             else:
                 count = 0
 
-        bin_roi[:row_idx] = 255
+            if ones_count > bin_roi.shape[1] * 0.3:
+                bin_roi[row_idx] = 255
+
+        if break_row_idx is not None:
+            bin_roi[:break_row_idx] = 255
 
         # display_img(bin_roi)
 
@@ -178,10 +184,10 @@ class PlayfieldFinder:
         segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 50)
         if segments is not None:
 
-            # roi_copy = roi.copy()
-            # for segment in segments:
-            #     x1, y1, x2, y2 = segment[0]
-            #     cv2.line(roi_copy, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            roi_copy = roi.copy()
+            for segment in segments:
+                x1, y1, x2, y2 = segment[0]
+                cv2.line(roi_copy, (x1, y1), (x2, y2), (255, 0, 0), 2)
             # display_img(roi_copy)
 
             lines = convert_hough_segments_to_lines(segments)
