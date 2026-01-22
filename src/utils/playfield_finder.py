@@ -47,6 +47,7 @@ class PlayfieldFinder:
 
     @staticmethod
     def intersection_to_points_array(intersections: list[Intersection]) -> np.ndarray[int]:
+        intersections = sorted(intersections, key=lambda inter: (inter.point.y, inter.point.x))
         return np.array([[int(inter.point.x), int(inter.point.y)] for inter in intersections])
 
 
@@ -133,67 +134,73 @@ class PlayfieldFinder:
 
 
     def find_top_internal_cushion(self) -> Line | None:
-        cropped_by_points, x_start, y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
+        x1, x2 = self.external_edges_intersection_points[:,0][:2]
 
-        # display_img(cropped_by_points)
+        width = x2 - x1
+        x_crop_start = int(x1 + 0.1 * width)
+        x2 = int(x2 - 0.1 * width)
+
+        y_crop_start, y2 = self.external_edges_intersection_points[:,1].min(), self.external_edges_intersection_points[:,1].max()
+        cropped_by_points = self.img[y_crop_start:y2, x_crop_start:x2]
 
         H = cropped_by_points.height
-        roi = cropped_by_points[:int(0.05*H)] 
+        roi_y_start_local = 0
+        roi_y_end_local = int(0.1*H)
 
+        roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
 
         # display_img(roi)
+        
+        hsv_roi = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
+        bin_roi = cv2.inRange(hsv_roi, self.lower_bound_u, self.upper_bound_u)
 
-        hsv_img = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
-        _, _, v = cv2.split(hsv_img)
+        # display_img(bin_roi)
 
-        v_clahe = cv2.CLAHE(v, 1.0, (8, 8), None, (2, 2))
-        v_clahe.apply(v)
+        count = 0
+        tolerance = 3
+        
+        for row_idx in range(bin_roi.shape[0]):
+            ones_count = np.sum(bin_roi[row_idx, :] > 0)
 
-        egdes = cv2.Canny(v_clahe, 150, 150)
-        segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 150, 150, 100, 20)
-        if segments is not None:
-            lines = convert_hough_segments_to_lines(segments)
-            lines = [line for line in lines if line.slope == 0]
-            lines_grouped = group_lines(lines, thresh_intercept=100)
-
-
-            # print(lines_grouped)
-
-            # cv2.line(roi, *lines_grouped[0].limit_to_img(roi), (255, 0, 0), 1)
-            # display_img(roi)
-
-            if lines_grouped:
-                top_line_global = transform_line(
-                    lines_grouped[0], 
-                    roi, 
-                    x_start, 
-                    y_start
-                )
-                return top_line_global
+            if ones_count > bin_roi.shape[1] // 2:
+                count += 1
+                if count >= tolerance:
+                    break
             else:
-                return None
+                count = 0
+
+        bin_roi[:row_idx] = 255
+
+        # display_img(bin_roi)
+
+        egdes = cv2.Canny(bin_roi, 100, 150)
+        # display_img(egdes)
+        segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 50)
+        if segments is not None:
+
+            # roi_copy = roi.copy()
+            # for segment in segments:
+            #     x1, y1, x2, y2 = segment[0]
+            #     cv2.line(roi_copy, (x1, y1), (x2, y2), (255, 0, 0), 2)
+            # display_img(roi_copy)
+
+            lines = convert_hough_segments_to_lines(segments)
+            lines = [line for line in lines if line.slope == 0 and line.intercept > 0]
+            lines = sorted(lines, key=lambda line: line.intercept)
+            # print(lines)
+
+            top_line_global = transform_line(
+                lines[0], 
+                roi, 
+                x_crop_start, 
+                y_crop_start + roi_y_start_local
+            )
+            return top_line_global
+
         
         else:
             return None
         
-
-
-    # def find_baulk_line(self) -> Line | None:
-    #     """
-    #     Find the baulk line of the playfield.
-        
-    #     Detects the baulk line by processing the image to isolate the playfield area
-    #     and selecting the near-horizontal line with intercept closest to the center.
-        
-    #     Returns:
-    #         Line | None: Line object representing the baulk line in global coordinates,
-    #                     or None if no suitable line is found
-    #     """
-    #     binary_mask, _ = binarize_playfield(self.img) 
-    #     external_intersections, _, _ = find_playfield_exteral_borders(self.img, binary_mask)
-    #     intersection_points = np.array([[int(inter.point.x), int(inter.point.y)] for inter in external_intersections])
-    #     return find_baulk_line(self.img, intersection_points)
-
 
     def find_bottom_internal_cushion(self) -> Line | None:
         cropped_by_points, x_start, original_y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
