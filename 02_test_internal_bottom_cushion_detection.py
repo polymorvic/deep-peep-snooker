@@ -87,7 +87,7 @@ df['diff']= df['intercept_ref'] - df['intercept_pred']
 df['abs_diff']= np.abs(df['intercept_ref'] - df['intercept_pred'])
 
 # %%
-df.to_excel('bottom_cushion_results2.xlsx', index=False)
+# df.to_excel('bottom_cushion_results2.xlsx', index=False)
 
 # %%
 # Calculate bins based on binwidth=1
@@ -104,7 +104,7 @@ plt.show()
 
 
 # %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
+print(df['diff'].median(), df['diff'].mean(),df['diff'].std())
 
 # %%
 df['diff'].median(), df['diff'].mean(),df['diff'].std()
