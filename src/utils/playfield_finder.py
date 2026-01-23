@@ -148,52 +148,37 @@ class PlayfieldFinder:
         roi_y_end_local = int(0.1*H)
 
         roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
-
-        # display_img(roi)
-        
+    
         hsv_roi = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
         lower_bound, upper_bound = compute_adaptive_hsv_bounds(hsv_roi)
         bin_roi = cv2.inRange(hsv_roi, lower_bound, upper_bound)
 
-        # display_img(bin_roi)
+        for row_idx in range(bin_roi.shape[0]):
+            ones_count = np.sum(bin_roi[row_idx, :] > 0)
 
+            if ones_count > bin_roi.shape[1] * 0.3:
+                bin_roi[row_idx] = 255
+                
         count = 0
         tolerance = 3
-        break_row_idx = None
-        
         for row_idx in range(bin_roi.shape[0]):
             ones_count = np.sum(bin_roi[row_idx, :] > 0)
 
             if ones_count > bin_roi.shape[1] // 2:
                 count += 1
-                if count >= tolerance and break_row_idx is None:
-                    break_row_idx = row_idx
+
+                if count >= tolerance:
+                    break
             else:
                 count = 0
 
-            if ones_count > bin_roi.shape[1] * 0.3:
-                bin_roi[row_idx] = 255
-
-        if break_row_idx is not None:
-            bin_roi[:break_row_idx] = 255
-
-        # display_img(bin_roi)
-
+        bin_roi[:row_idx] = 255
         egdes = cv2.Canny(bin_roi, 100, 150)
-        # display_img(egdes)
         segments = cv2.HoughLinesP(egdes, 1, np.pi/180, 100, 100, 50)
         if segments is not None:
-
-            roi_copy = roi.copy()
-            for segment in segments:
-                x1, y1, x2, y2 = segment[0]
-                cv2.line(roi_copy, (x1, y1), (x2, y2), (255, 0, 0), 2)
-            # display_img(roi_copy)
-
             lines = convert_hough_segments_to_lines(segments)
             lines = [line for line in lines if line.slope == 0 and line.intercept > 0]
             lines = sorted(lines, key=lambda line: line.intercept)
-            # print(lines)
 
             top_line_global = transform_line(
                 lines[0], 
