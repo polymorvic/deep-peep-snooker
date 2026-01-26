@@ -3,9 +3,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from .intersections import compute_intersections, Intersection
-from .func import (compute_adaptive_hsv_bounds, pipette_color,
+from .func import (compute_adaptive_hsv_bounds, pipette_color, get_corners,
                    straighten_binary_mask, convert_hough_segments_to_lines,
-                   group_lines, select_lines, crop_image_by_points, sanitize_lines, crop_and_split
+                   group_lines, select_lines, crop_image_by_points, sanitize_lines, crop_and_split,
+                   get_local_reference_line, filter_edges_by_reference_line, filter_lines_by_reference
                    )
 
 from .lines import Line, transform_line
@@ -131,6 +132,7 @@ class PlayfieldFinder:
         self.preprocessed_img = pic_copy
         self.straighted_mask = straighted_binary_mask
         self.external_edges_intersection_points = PlayfieldFinder.intersection_to_points_array(intersections)
+        self.external_bound_lines = lines
 
 
     def find_top_internal_cushion(self) -> Line | None:
@@ -235,3 +237,88 @@ class PlayfieldFinder:
                 return None
         else:
             return None
+
+
+    def find_internal_side_cushions(self) -> tuple[Line, Line] | None:
+        top_left, bottom_left, top_right, bottom_right = get_corners(self.external_edges_intersection_points)
+        img_center_w = self.img.width // 2
+
+        left_img = self.img[top_left[1]:bottom_left[1], bottom_left[0]:img_center_w]
+        right_img = self.img[top_right[1]:bottom_right[1], img_center_w:bottom_right[0]]
+
+        gray_left_img = cv2.cvtColor(left_img, cv2.COLOR_RGB2GRAY)
+        gray_right_img = cv2.cvtColor(right_img, cv2.COLOR_RGB2GRAY)
+
+        left_x_start = bottom_left[0]
+        left_y_start = top_left[1]
+        right_x_start = img_center_w
+        right_y_start = top_right[1]
+
+        local_left_ref_line = get_local_reference_line(self.external_bound_lines, self.img, "left", left_x_start, left_y_start)
+        local_right_ref_line = get_local_reference_line(self.external_bound_lines, self.img, "right", right_x_start, right_y_start)
+
+
+        edges_left_img = cv2.Canny(gray_left_img, 50, 100)
+        edges_right_img = cv2.Canny(gray_right_img, 50, 100)
+
+
+        # display_img(edges_left_img)
+        # display_img(edges_right_img)
+
+
+        edges_left_img = filter_edges_by_reference_line(edges_left_img, local_left_ref_line, "left", margin=12)
+        edges_right_img = filter_edges_by_reference_line(edges_right_img, local_right_ref_line, "right", margin=12)
+
+        # display_img(edges_left_img)
+        # display_img(edges_right_img)
+
+        segments_left_img = cv2.HoughLinesP(edges_left_img, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=25)
+        segments_right_img = cv2.HoughLinesP(edges_right_img, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=25)
+
+        # for segment in segments_left_img:
+        #     x1, y1, x2, y2 = segment[0]
+        #     cv2.line(left_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
+        # for segment in segments_right_img:
+        #     x1, y1, x2, y2 = segment[0]
+        #     cv2.line(right_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
+
+        # display_img(left_img)
+        # display_img(right_img)
+
+        left_lines = convert_hough_segments_to_lines(segments_left_img)
+        right_lines = convert_hough_segments_to_lines(segments_right_img)
+
+        left_line = filter_lines_by_reference(left_lines, local_left_ref_line)
+        right_line = filter_lines_by_reference(right_lines, local_right_ref_line)
+
+        # print('linie referencyjne loklane')
+        # print('left', local_left_ref_line)
+        # print('right', local_right_ref_line)
+        # print('--------------------------------')
+        # print('znalezione linie:')
+        # print('left', left_lines)
+        # print('right', right_lines)
+
+        # print('filtered lines:')
+        # print(left_line)
+        # print(right_line)
+        # print('--------------------------------')
+
+        # cv2.line(left_img, *left_line.limit_to_img(left_img), (0, 0, 255), 1)
+        # cv2.line(right_img, *right_line.limit_to_img(right_img), (0, 0, 255), 1)
+
+        # display_img(left_img)
+        # display_img(right_img)
+
+        global_left_internal_side_cushion, global_right_internal_side_cushion = None, None
+
+        try:    
+            global_left_internal_side_cushion = transform_line(left_line, left_img, left_x_start, left_y_start)
+        except Exception as e:
+            pass
+        try:
+            global_right_internal_side_cushion = transform_line(right_line, right_img, right_x_start, right_y_start)
+        except Exception as e:
+            pass
+
+        return global_left_internal_side_cushion, global_right_internal_side_cushion
