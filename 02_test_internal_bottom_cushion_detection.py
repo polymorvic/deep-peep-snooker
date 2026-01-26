@@ -1,4 +1,3 @@
-# %%
 import cv2
 import json
 from src.utils.func import (crop_center, read_image_as_numpyimage)
@@ -17,32 +16,22 @@ import pandas as pd
 from src.utils.annotations import PolygonAnnotation
 import matplotlib.pyplot as plt
 
-# %%
 picname = 'pic_02_06_01'  # _06_09_02     pic_01_43_02
 pic = read_image_as_numpyimage(f'pics/{picname}.png', 'rgb') # pic_02_07_01.png   pic_05_18_01.png  pic_08_08_01.png pic_06_16_02.png
 cropped_pic = crop_center(pic)
 
-# %%
 display_img(pic)
 
-# %%
 finder = PlayfieldFinder(pic)
 
-# %%
 internal_bottom_cushion = finder.find_bottom_internal_cushion()
 internal_bottom_cushion
 
-# %%
 display_img(plot_on_image(pic, lines=[internal_bottom_cushion], line_thickness=1))
 
-# %%
 polygon_annp = PolygonAnnotation(root_dir='playfield_gt')
 polygon_annp.read(Path('playfield_gt/all.json'))
 
-# %% [markdown]
-# #### find playfield
-
-# %%
 root = Path('pics')
 results = []
 ious = []
@@ -81,16 +70,12 @@ for file in sorted(root.glob('*.png')):
             'intercept_pred': internal_bottom_cushion.intercept if internal_bottom_cushion is not None else None,
             }) 
 
-# %%
 df = pd.DataFrame(results)
 df['diff']= df['intercept_ref'] - df['intercept_pred']
 df['abs_diff']= np.abs(df['intercept_ref'] - df['intercept_pred'])
 
-# %%
 # df.to_excel('bottom_cushion_results2.xlsx', index=False)
 
-# %%
-# Calculate bins based on binwidth=1
 diff_clean = df['diff'].dropna()
 
 min_val = diff_clean.min()
@@ -102,120 +87,16 @@ plt.ylabel('Frequency')
 plt.title('Histogram of Intercept Differences')
 plt.show()
 
-
-# %%
 print(df['diff'].median(), df['diff'].mean(),df['diff'].std())
 
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
 
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
+# picname = 'pic_07_13_01'
 
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
+# pic = read_image_as_numpyimage(f'pics/{picname}.png', 'rgb')
+# data = polygon_annp.filter_by_image('pic_01_05_01.png')
+# points_gt = np.asarray(transform_annotation(pic, data.points))
+# display_img(plot_on_image(pic, polygons=[transform_annotation(pic, data.points)]))
 
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
+# pic = read_image_as_numpyimage(f'pics/{picname}.png', 'rgb')
 
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-wrong_pics = pd.read_excel('/home/polymorvic/Desktop/zdjecia_do_poprawy.ods')[['col2']]
-
-# %%
-df
-
-# %%
-df[~df['pic_name'].isin(wrong_pics['col2'])].sort_values(by='abs_diff', ascending=False)['diff'].hist()
-
-# %%
-df[df['pic_name'].isin(wrong_pics['col2'])].sort_values(by='abs_diff', ascending=False)['diff'].hist()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-df['diff'].median(), df['diff'].mean(),df['diff'].std()
-
-# %%
-
-
-# %%
-
-
-# %%
-df['diff'].median()
-
-# %%
-df['diff'].std()
-
-# %%
-df['diff'].mean()
-
-# %%
-picname = 'pic_07_13_01'
-
-# %%
-pic = read_image_as_numpyimage(f'pics/{picname}.png', 'rgb')
-data = polygon_annp.filter_by_image('pic_01_05_01.png')
-points_gt = np.asarray(transform_annotation(pic, data.points))
-display_img(plot_on_image(pic, polygons=[transform_annotation(pic, data.points)]))
-
-pic = read_image_as_numpyimage(f'pics/{picname}.png', 'rgb')
-
-# %%
-transform_annotation(pic, data.points)
-
-# %%
-with open('playfield_gt/runda_5.json', 'r') as f:
-    data = json.load(f)
-
-# %%
-with open('playfield_gt/ssss.json', 'w') as f:
-    json.dump(data, f, indent=4)
-
-
+# transform_annotation(pic, data.points)
