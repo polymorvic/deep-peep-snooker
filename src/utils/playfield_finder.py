@@ -181,7 +181,8 @@ class PlayfieldFinder:
 
         
         else:
-            return None
+            line = Line(slope=0, intercept=roi.height // 4, xv=None)
+            return transform_line(line, roi, x_crop_start, y_crop_start + roi_y_start_local)
         
 
     def find_bottom_internal_cushion(self) -> Line | None:
@@ -261,8 +262,8 @@ class PlayfieldFinder:
         # display_img(edges_left_img)
         # display_img(edges_right_img)
 
-        segments_left_img = cv2.HoughLinesP(edges_left_img, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=25)
-        segments_right_img = cv2.HoughLinesP(edges_right_img, 1, np.pi / 180, threshold=100, minLineLength=50, maxLineGap=25)
+        segments_left_img = cv2.HoughLinesP(edges_left_img, 1, np.pi / 180, threshold=80, minLineLength=50, maxLineGap=25)
+        segments_right_img = cv2.HoughLinesP(edges_right_img, 1, np.pi / 180, threshold=80, minLineLength=50, maxLineGap=25)
 
         # for segment in segments_left_img:
         #     x1, y1, x2, y2 = segment[0]
