@@ -2,6 +2,7 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
+from .const import GREEN_LOWER_BOUND, GREEN_UPPER_BOUND
 from .intersections import compute_intersections, Intersection
 from .func import (compute_adaptive_hsv_bounds, pipette_color, get_corners,
                    straighten_binary_mask, convert_hough_segments_to_lines,
@@ -68,7 +69,7 @@ class PlayfieldFinder:
     def _create_horizontal_axis(self) -> Line:
         """Create a horizontal line passing through the image center."""
         return Line(slope=0, intercept=self.center.y)
-    
+
 
     def _preprocess_image(
         self, 
@@ -81,19 +82,7 @@ class PlayfieldFinder:
         ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
         img_hsv = cv2.cvtColor(self.img, cv2.COLOR_RGB2HSV)
-        upper_img_hsv_cropped, lower_img_hsv_cropped, split_h = crop_and_split(img_hsv)
-
-        upper_img_hsv = img_hsv[:split_h, :]
-        lower_img_hsv = img_hsv[split_h:, :]
-
-        self.lower_bound_u, self.upper_bound_u = compute_adaptive_hsv_bounds(upper_img_hsv_cropped)
-        self.lower_bound_l, self.upper_bound_l = compute_adaptive_hsv_bounds(lower_img_hsv_cropped)
-
-        upper_binary = cv2.inRange(upper_img_hsv, self.lower_bound_u, self.upper_bound_u)
-        lower_binary = cv2.inRange(lower_img_hsv, self.lower_bound_l, self.upper_bound_l)
-
-        binary_mask = np.vstack([upper_binary, lower_binary])
-        inv_binary_img = cv2.bitwise_not(binary_mask)
+        binary_mask = cv2.inRange(img_hsv, GREEN_LOWER_BOUND, GREEN_UPPER_BOUND)
 
         straighted_binary_mask, binary_mask_close, _ = straighten_binary_mask(binary_mask, kernel_size)
         edges = cv2.Canny(straighted_binary_mask, canny_thresh_lower, canny_thresh_upper)
@@ -205,7 +194,7 @@ class PlayfieldFinder:
         while True:
             roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
             hsv_roi = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
-            bin_roi = cv2.inRange(hsv_roi, self.lower_bound_l, self.upper_bound_l)
+            bin_roi = cv2.inRange(hsv_roi, GREEN_LOWER_BOUND, GREEN_UPPER_BOUND)
             white_ratio = cv2.countNonZero(bin_roi) / bin_roi.size
 
             if white_ratio > 0.5:

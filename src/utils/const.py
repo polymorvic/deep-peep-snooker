@@ -4,10 +4,10 @@ import numpy as np
 from src.utils.points import Point
 
 
-GREEN_LOWER_BOUND: np.ndarray[int, int, int] = np.array([25, 40, 40])
+GREEN_LOWER_BOUND = np.array([25, 40, 40])
 
 
-GREEN_UPPER_BOUND: np.ndarray[int, int, int] = np.array([95, 255, 255])
+GREEN_UPPER_BOUND = np.array([95, 255, 255])
 
 
 SNOOKER_TABLE = {
