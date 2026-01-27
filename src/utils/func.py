@@ -1,11 +1,8 @@
-from ctypes import pointer
 import cv2
-import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from typing import Literal, Iterable
 
-from .const import ref_snooker_playfield
 from .common import array_like, NumpyImage
 from .lines import Line, LineGroup, transform_line
 from .intersections import Intersection, compute_intersections
@@ -343,82 +340,6 @@ def sanitize_lines(lines: list[Line]) -> list[Line]:
     return list(sanitized) + horizontal_lines
 
 
-# def find_playfield_internal_sideline_borders(
-#     blackout_img: array_like, 
-#     hough_thresh: int = 100, 
-#     hough_min_line_len: int = 200, 
-#     hough_max_line_gap: int = 10,
-#     thresh_theta: float | int = 50,
-#     thresh_intercept: float | int = 200,
-#     slope_threshold: float = 0.1
-#     ) -> list[LineGroup] | None:
-#     """
-#     Find internal sideline borders of a playfield by detecting line segments.
-    
-#     The function processes a blackout image (where playfield area has been isolated)
-#     to detect internal sideline borders using probabilistic Hough line transformation.
-#     It filters and groups similar lines to identify the main sideline borders.
-#     Returns exactly 2 lines with opposite slopes (one positive, one negative).
-    
-#     Process:
-#         1. Apply probabilistic Hough line transformation to detect line segments
-#         2. Convert detected segments to Line objects
-#         3. Filter lines based on slope threshold (keep vertical or high-slope lines)
-#         4. Group similar lines together based on angle and intercept thresholds
-#         5. If exactly 2 lines are found, return them as-is
-#         6. If not 2 lines, filter to keep only lines with opposite slopes (positive and negative),
-#            selecting the group with most lines from each category
-#         7. Return None if opposite slopes cannot be found
-    
-#     Args:
-#         blackout_img: Binary image with isolated playfield (white pixels represent playfield)
-#         hough_thresh: Minimum votes to detect a line in Hough transform (default 100)
-#         hough_min_line_len: Minimum line length in pixels (default 200)
-#         hough_max_line_gap: Maximum gap between line segments to connect (default 10)
-#         thresh_theta: Angle threshold for grouping similar lines in degrees (default 50)
-#         thresh_intercept: Intercept threshold for grouping similar lines (default 200)
-#         slope_threshold: Minimum slope magnitude to keep a line (default 0.1)
-#                           Lines with None slope (vertical) or abs(slope) >= threshold are kept
-    
-#     Returns:
-#         list[LineGroup] | None: List containing exactly 2 LineGroup objects with opposite slopes
-#                                 (one with positive slope, one with negative slope) if found,
-#                                 or None if lines with opposite slopes cannot be found. If exactly
-#                                 2 lines are detected after grouping, they are returned as-is.
-    
-#     Note:
-#         The function is designed to detect internal sidelines, which are typically vertical
-#         or nearly vertical lines. The slope_threshold parameter filters out near-horizontal
-#         lines that are not relevant for sideline detection. The function ensures that only
-#         2 lines with opposite slopes are returned, selecting the groups with the most lines
-#         in each category.
-#     """
-#     segments = cv2.HoughLinesP(
-#         blackout_img, 
-#         1, 
-#         np.pi / 180, 
-#         threshold=hough_thresh, 
-#         minLineLength=hough_min_line_len, 
-#         maxLineGap=hough_max_line_gap
-#     )
-
-#     lines = convert_hough_segments_to_lines(segments)
-#     lines = [line for line in lines if line.slope is None or abs(line.slope) >= slope_threshold]
-#     lines = group_lines(lines, thresh_theta=thresh_theta, thresh_intercept=thresh_intercept)
-    
-#     if len(lines) != 2:
-#         positive = [lg for lg in lines if lg.slope is not None and lg.slope > 0]
-#         negative = [lg for lg in lines if lg.slope is not None and lg.slope < 0]
-        
-#         if positive and negative:
-#             return [max(positive, key=lambda lg: len(lg.lines)), 
-#                      max(negative, key=lambda lg: len(lg.lines))]
-#         else:
-#             return None
-
-#     return lines
-
-
 def filter_edges_by_reference_line(edges_img: np.ndarray, ref_line: Line, inside_direction: str, margin: int = 12) -> np.ndarray:
     h, w = edges_img.shape
     filtered_edges = edges_img.copy()
@@ -468,18 +389,13 @@ def filter_edges_by_reference_line(edges_img: np.ndarray, ref_line: Line, inside
     return filtered_edges
 
 
-def filter_lines_by_reference(lines: list[Line], ref_line: Line, slope_tolerance: float = 0.5) -> Line | None:
+def filter_lines_by_reference(lines: list[Line], ref_line: Line, slope_tolerance: float = 0.85) -> Line | None:
     if ref_line is None or not lines or ref_line.xv is not None or ref_line.slope is None:
         return None
     
-    # if ref_line.slope > 0:
-    #     intercept_condition = lambda line: abs(line.intercept) < abs(ref_line.intercept)
-    # else:
-    #     intercept_condition = lambda line: abs(line.intercept) > abs(ref_line.intercept)
-    
     filtered = []
     for line in lines:
-        if (line.xv is None and line.slope is not None and line.intercept is not None and abs(line.slope - ref_line.slope) < slope_tolerance):# and #intercept_condition(line)):
+        if (line.xv is None and line.slope is not None and line.intercept is not None and abs(line.slope - ref_line.slope) < slope_tolerance):
             filtered.append(line)
     
     if not filtered:
@@ -490,64 +406,3 @@ def filter_lines_by_reference(lines: list[Line], ref_line: Line, slope_tolerance
         groups = group_lines(current_lines)
         current_lines = groups
     return current_lines[0]
-
-
-# def find_baulk_line(
-#     original_image: array_like,
-#     intersection_points: np.ndarray,
-#     hough_thresh: int = 100,
-#     hough_min_line_len: int = 200,
-#     hough_max_line_gap: int = 10,
-#     ) -> Line | None:
-#     """
-#     Find the baulk line in a cropped playfield image.
-    
-#     Detects near-horizontal lines using Hough transform and selects the one
-#     with intercept closest to the image center.
-    
-#     Args:
-#         original_image: Input image as RGB numpy array or NumpyImage
-#         intersection_points: Array of intersection points used to crop the image
-#         hough_thresh: Minimum votes to detect a line (default: 100)
-#         hough_min_line_len: Minimum line length in pixels (default: 200)
-#         hough_max_line_gap: Maximum gap between line segments (default: 10)
-    
-#     Returns:
-#         Line | None: Line object representing the baulk line in global coordinates,
-#                     or None if no suitable line is found
-#     """
-#     cropped_by_points, x_start, y_start = crop_image_by_points(original_image, intersection_points)
-
-#     hsv_img = cv2.cvtColor(cropped_by_points, cv2.COLOR_RGB2HSV)
-#     _, _, v = cv2.split(hsv_img)
-
-#     clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8,8))
-#     v_eq = clahe.apply(v)
-
-#     edges = cv2.Canny(v_eq, 50, 150)
-#     segments = cv2.HoughLinesP(
-#         edges,
-#         rho=1,
-#         theta=np.pi/180,
-#         threshold=hough_thresh,
-#         minLineLength=hough_min_line_len,
-#         maxLineGap=hough_max_line_gap
-#     )
-
-#     if segments is not None:
-#         lines = convert_hough_segments_to_lines(segments)
-#         lines = [line for line in lines if abs(line.slope) < 2]
-
-#         if lines:
-#             lines = group_lines(lines, thresh_theta=50, thresh_intercept=10)
-#             lines = sorted(lines, key=lambda line: line.intercept)
-
-#             center_y = cropped_by_points.height / 2
-#             baulk_line_local = min(lines, key=lambda line: abs(line.intercept - center_y))
-#             baulk_line_global = transform_line(baulk_line_local, original_image, x_start, y_start)
-
-#             return baulk_line_global
-#         else:
-#             return None
-#     else:
-#         return None
