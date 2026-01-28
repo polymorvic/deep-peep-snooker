@@ -10,6 +10,13 @@ from .points import Point
 from .plotting import display_img
 
 
+def trim_width(arr: np.ndarray | NumpyImage, pct: float) -> np.ndarray | NumpyImage:
+    arr_copy = arr.copy()
+    width = arr_copy.shape[1]
+    cut = int(width * pct / 2)
+    return arr_copy[:, cut: width - cut]
+    
+
 def get_corners(points: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     left = points[points[:, 0].argsort()[:2]]
     right = points[points[:, 0].argsort()[2:]]
