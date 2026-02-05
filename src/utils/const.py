@@ -1,13 +1,63 @@
 import cv2
 import numpy as np
+from enum import StrEnum
 
 from src.utils.points import Point
+
+
+class BallColor(StrEnum):
+    BLUE = 'blue'
+    YELLOW = 'yellow'
+    GREEN = 'green'
+    BROWN = 'brown'
+    PINK = 'pink'
+    RED = 'red'
+    CUE = 'cue'
+    BLACK = 'black'
 
 
 GREEN_LOWER_BOUND = np.array([25, 40, 40])
 
 
 GREEN_UPPER_BOUND = np.array([95, 255, 255])
+
+
+BALLS = {
+    'radius_mm': 52.5,
+
+    BallColor.BLUE: {
+        'lower_bound': np.array([100, 100, 100]),
+        'upper_bound': np.array([140, 255, 255])
+    },
+    BallColor.YELLOW: {
+        'lower_bound': np.array([20, 100, 100]),
+        'upper_bound': np.array([30, 255, 255])
+    },
+    BallColor.GREEN: {
+        'lower_bound': np.array([30, 100, 100]),
+        'upper_bound': np.array([70, 255, 255])
+    },
+    BallColor.BROWN: {
+        'lower_bound': np.array([10, 100, 100]),
+        'upper_bound': np.array([20, 255, 255])
+    },
+    BallColor.BLACK: {
+        'lower_bound': np.array([0, 100, 100]),
+        'upper_bound': np.array([10, 255, 255])
+    },
+    BallColor.CUE: {
+        'lower_bound': np.array([0, 100, 100]),
+        'upper_bound': np.array([10, 255, 255])
+    },
+    BallColor.RED: {
+        'lower_bound': np.array([0, 100, 100]),
+        'upper_bound': np.array([10, 255, 255])
+    },
+    BallColor.PINK: {
+        'lower_bound': np.array([150, 100, 100]),
+        'upper_bound': np.array([170, 255, 255])
+    }
+}
 
 
 SNOOKER_TABLE = {

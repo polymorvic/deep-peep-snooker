@@ -1,6 +1,7 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+from pydantic import BaseModel, ConfigDict
 
 from .const import GREEN_LOWER_BOUND, GREEN_UPPER_BOUND
 from .intersections import compute_intersections, Intersection
@@ -13,6 +14,51 @@ from .func import (compute_adaptive_hsv_bounds, pipette_color, get_corners,
 from .lines import Line, transform_line
 from .plotting import display_img
 from .points import Point
+
+
+class SnookerModel(BaseModel, arbitrary_types_allowed=True):
+    pass
+
+
+class PlayfieldLines(SnookerModel):
+    top: Line
+    bottom: Line
+    left: Line
+    right: Line
+
+    @classmethod
+    def from_lines(cls, top: Line, bottom: Line, side_lines: tuple[Line, Line]):
+        left = [line for line in side_lines if line.slope < 0][0]
+        right = [line for line in side_lines if line.slope > 0][0]
+        return cls(top=top, bottom=bottom, left=left, right=right)
+
+
+class PlayfiledPoints(SnookerModel):
+    top_left: Point
+    top_right: Point
+    bottom_right: Point
+    bottom_left: Point
+
+    @classmethod
+    def from_numpy(cls, lt: np.ndarray, lb:np.ndarray, rt:np.ndarray, rb:np.ndarray):
+        return cls(
+            top_left=Point.from_iterable(lt),
+            top_right=Point.from_iterable(rt),
+            bottom_right=Point.from_iterable(rb),
+            bottom_left=Point.from_iterable(lb),
+        )
+
+    def to_numpy(self) -> np.ndarray:
+        return np.array([
+            np.array(self.top_left),
+            np.array(self.top_right),
+            np.array(self.bottom_right),
+            np.array(self.bottom_left),
+        ])
+
+class Playfield(SnookerModel):
+    lines: PlayfieldLines
+    points: PlayfiledPoints
 
 
 class PlayfieldFinder:
@@ -110,7 +156,7 @@ class PlayfieldFinder:
             cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
             cv2.circle(pic_copy, pt, 2,(0, 0, 255), 2)
 
-        # display_img(inv_binary_img)
+        # display_img(binary_mask)
         # display_img(binary_mask_close)
         # display_img(straighted_binary_mask)
         # display_img(edges)
@@ -236,6 +282,9 @@ class PlayfieldFinder:
         left_img = self.img[top_left[1]:bottom_left[1], bottom_left[0]:img_center_w]
         right_img = self.img[top_right[1]:bottom_right[1], img_center_w:bottom_right[0]]
 
+        # display_img(left_img)
+        # display_img(right_img)
+
         gray_left_img = cv2.cvtColor(left_img, cv2.COLOR_RGB2GRAY)
         gray_right_img = cv2.cvtColor(right_img, cv2.COLOR_RGB2GRAY)
 
@@ -248,8 +297,8 @@ class PlayfieldFinder:
         local_right_ref_line = get_local_reference_line(self.external_bound_lines, self.img, "right", right_x_start, right_y_start)
 
 
-        edges_left_img = cv2.Canny(gray_left_img, 50, 100)
-        edges_right_img = cv2.Canny(gray_right_img, 50, 100)
+        edges_left_img = cv2.Canny(gray_left_img, 25, 75)
+        edges_right_img = cv2.Canny(gray_right_img, 25, 75)
 
 
         # display_img(edges_left_img)
