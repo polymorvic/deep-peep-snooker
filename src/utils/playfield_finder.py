@@ -1,6 +1,7 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+from pydantic import BaseModel, ConfigDict
 
 from .const import GREEN_LOWER_BOUND, GREEN_UPPER_BOUND
 from .intersections import compute_intersections, Intersection
@@ -13,6 +14,51 @@ from .func import (compute_adaptive_hsv_bounds, pipette_color, get_corners,
 from .lines import Line, transform_line
 from .plotting import display_img
 from .points import Point
+
+
+class SnookerModel(BaseModel, arbitrary_types_allowed=True):
+    pass
+
+
+class PlayfieldLines(SnookerModel):
+    top: Line
+    bottom: Line
+    left: Line
+    right: Line
+
+    @classmethod
+    def from_lines(cls, top: Line, bottom: Line, side_lines: tuple[Line, Line]):
+        left = [line for line in side_lines if line.slope < 0][0]
+        right = [line for line in side_lines if line.slope > 0][0]
+        return cls(top=top, bottom=bottom, left=left, right=right)
+
+
+class PlayfiledPoints(SnookerModel):
+    top_left: Point
+    top_right: Point
+    bottom_right: Point
+    bottom_left: Point
+
+    @classmethod
+    def from_numpy(cls, lt: np.ndarray, lb:np.ndarray, rt:np.ndarray, rb:np.ndarray):
+        return cls(
+            top_left=Point.from_iterable(lt),
+            top_right=Point.from_iterable(rt),
+            bottom_right=Point.from_iterable(rb),
+            bottom_left=Point.from_iterable(lb),
+        )
+
+    def to_numpy(self) -> np.ndarray:
+        return np.array([
+            np.array(self.top_left),
+            np.array(self.top_right),
+            np.array(self.bottom_right),
+            np.array(self.bottom_left),
+        ])
+
+class Playfield(SnookerModel):
+    lines: PlayfieldLines
+    points: PlayfiledPoints
 
 
 class PlayfieldFinder:
@@ -252,28 +298,28 @@ class PlayfieldFinder:
         edges_right_img = cv2.Canny(gray_right_img, 50, 100)
 
 
-        # display_img(edges_left_img)
-        # display_img(edges_right_img)
+        display_img(edges_left_img)
+        display_img(edges_right_img)
 
 
-        edges_left_img = filter_edges_by_reference_line(edges_left_img, local_left_ref_line, "left", margin=12)
-        edges_right_img = filter_edges_by_reference_line(edges_right_img, local_right_ref_line, "right", margin=12)
+        edges_left_img = filter_edges_by_reference_line(edges_left_img, local_left_ref_line, "left", margin=0)
+        edges_right_img = filter_edges_by_reference_line(edges_right_img, local_right_ref_line, "right", margin=0)
 
-        # display_img(edges_left_img)
-        # display_img(edges_right_img)
+        display_img(edges_left_img)
+        display_img(edges_right_img)
 
         segments_left_img = cv2.HoughLinesP(edges_left_img, 1, np.pi / 180, threshold=80, minLineLength=50, maxLineGap=25)
         segments_right_img = cv2.HoughLinesP(edges_right_img, 1, np.pi / 180, threshold=80, minLineLength=50, maxLineGap=25)
 
-        # for segment in segments_left_img:
-        #     x1, y1, x2, y2 = segment[0]
-        #     cv2.line(left_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
-        # for segment in segments_right_img:
-        #     x1, y1, x2, y2 = segment[0]
-        #     cv2.line(right_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
+        for segment in segments_left_img:
+            x1, y1, x2, y2 = segment[0]
+            cv2.line(left_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
+        for segment in segments_right_img:
+            x1, y1, x2, y2 = segment[0]
+            cv2.line(right_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
 
-        # display_img(left_img)
-        # display_img(right_img)
+        display_img(left_img)
+        display_img(right_img)
 
         left_lines = convert_hough_segments_to_lines(segments_left_img)
         right_lines = convert_hough_segments_to_lines(segments_right_img)
@@ -281,24 +327,24 @@ class PlayfieldFinder:
         left_line = filter_lines_by_reference(left_lines, local_left_ref_line)
         right_line = filter_lines_by_reference(right_lines, local_right_ref_line)
 
-        # print('linie referencyjne loklane')
-        # print('left', local_left_ref_line)
-        # print('right', local_right_ref_line)
-        # print('--------------------------------')
-        # print('znalezione linie:')
-        # print('left', left_lines)
-        # print('right', right_lines)
+        print('linie referencyjne loklane')
+        print('left', local_left_ref_line)
+        print('right', local_right_ref_line)
+        print('--------------------------------')
+        print('znalezione linie:')
+        print('left', left_lines)
+        print('right', right_lines)
 
-        # print('filtered lines:')
-        # print(left_line)
-        # print(right_line)
-        # print('--------------------------------')
+        print('filtered lines:')
+        print(left_line)
+        print(right_line)
+        print('--------------------------------')
 
-        # cv2.line(left_img, *left_line.limit_to_img(left_img), (0, 0, 255), 1)
-        # cv2.line(right_img, *right_line.limit_to_img(right_img), (0, 0, 255), 1)
+        cv2.line(left_img, *left_line.limit_to_img(left_img), (0, 0, 255), 1)
+        cv2.line(right_img, *right_line.limit_to_img(right_img), (0, 0, 255), 1)
 
-        # display_img(left_img)
-        # display_img(right_img)
+        display_img(left_img)
+        display_img(right_img)
 
         global_left_internal_side_cushion, global_right_internal_side_cushion = None, None
 
