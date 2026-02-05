@@ -396,13 +396,14 @@ def filter_edges_by_reference_line(edges_img: np.ndarray, ref_line: Line, inside
     return filtered_edges
 
 
-def filter_lines_by_reference(lines: list[Line], ref_line: Line, slope_tolerance: float = 0.85) -> Line | None:
+def filter_lines_by_reference(lines: list[Line], ref_line: Line, slope_tolerance: float = 0.2) -> Line | None:
     if ref_line is None or not lines or ref_line.xv is not None or ref_line.slope is None:
         return None
     
+    slope_tolerance *= ref_line.slope
     filtered = []
     for line in lines:
-        if (line.xv is None and line.slope is not None and line.intercept is not None and abs(line.slope - ref_line.slope) < slope_tolerance):
+        if (line.xv is None and line.slope is not None and line.intercept is not None and abs(line.slope - ref_line.slope) < abs(slope_tolerance)):
             filtered.append(line)
     
     if not filtered:
