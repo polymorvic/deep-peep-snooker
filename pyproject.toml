@@ -9,7 +9,10 @@ dependencies = [
     "opencv-python>=4.12.0.88",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.12.0",
+    "scikit-learn>=1.8.0",
     "shapely>=2.1.2",
+    "torch>=2.10.0",
+    "torchvision>=0.25.0",
 ]
 
 [dependency-groups]
