@@ -28,5 +28,6 @@ pics/
 *.csv
 *.pdf
 *.txt
+*webm
 
 .DS_Store
