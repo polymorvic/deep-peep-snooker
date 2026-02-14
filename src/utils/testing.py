@@ -1,7 +1,13 @@
+from datetime import datetime
+from typing import Literal
 from pathlib import Path
+from enum import StrEnum
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+
+
+TestType = Literal["bottom", "top", "left", "right", "iou"]
 
 
 def prepare_test_results_report(
@@ -58,3 +64,24 @@ def save_test_histogram(
     plt.title(f"Histogram of {colname}")
     plt.savefig(output_path)
     plt.close()
+
+
+class TestType(StrEnum):
+    BOTTOM = "bottom"
+    TOP = "top"
+    LEFT = "left"
+    RIGHT = "right"
+    IOU = "iou"
+
+    @property
+    def subdir(self) -> str:
+        if self is TestType.IOU:
+            return "iou"
+        return f"internal-{self.value}-cushion"
+
+
+def build_output_dir(parent_dir: str | Path, test_type: TestType) -> Path:
+    ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    out_dir = Path(parent_dir) / test_type.subdir / ts
+    out_dir.mkdir(parents=True, exist_ok=True)
+    return out_dir
