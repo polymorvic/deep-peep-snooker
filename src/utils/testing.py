@@ -104,24 +104,35 @@ def build_output_dir(parent_dir: str | Path, test_type: TestType) -> Path:
     return out_dir
 
 
-def test_bottom(pic_filepath: Path, 
+def test_cushion(pic_filepath: Path, 
                 polygon_ann: list[PolygonAnnotationData],
-                test_out_dir: Path
+                test_out_dir: Path,
+                position: Literal["top", "bottom"]
                 ) -> tuple[Line, int]:
 
     pic_name = pic_filepath.name
     pic = read_image_as_numpyimage(pic_filepath, "rgb")
     finder = PlayfieldFinder(pic)
 
-    bottom = finder.find_bottom_internal_cushion()
+    if position == "bottom":
+        line = finder.find_bottom_internal_cushion()
+    else:
+        line = finder.find_top_internal_cushion()
 
     data = polygon_ann.filter_by_image(pic_name)
     pts_gt = np.asarray(transform_annotation(pic, data.points))
-    y_ref = int(np.median(np.sort(pts_gt[:, 1])[-2:]))
 
-    p1, p2 = bottom.limit_to_img(pic)
+    y_sorted = np.sort(pts_gt[:, 1])
+
+    if position == "bottom":
+        y_ref = int(np.median(y_sorted[-2:]))
+    else:
+        y_ref = int(np.median(y_sorted[:2]))
+
+    p1, p2 = line.limit_to_img(pic)
+
     img = cv2.cvtColor(pic, cv2.COLOR_RGB2BGR)
     cv2.line(img, p1, p2, (255, 0, 0), 1)
-    cv2.imwrite(str(test_out_dir / f"test_{pic_name}"), img)
+    cv2.imwrite(str(test_out_dir / f"test_{position}_{pic_name}"), img)
 
-    return bottom, y_ref
+    return line, y_ref
