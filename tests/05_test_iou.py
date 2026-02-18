@@ -30,8 +30,8 @@ def run(
     test_root_dir = Path(f'{output_dir}/{now_str}')
     test_root_dir.mkdir(exist_ok=True)
 
-    polygon_annp = PolygonAnnotation(root_dir=poly_annotations_dir)
-    polygon_annp.read(Path(f'{poly_annotations_dir}/{poly_annotations_file}.json'))
+    polygon_ann = PolygonAnnotation(root_dir=poly_annotations_dir)
+    polygon_ann.read(Path(f'{poly_annotations_dir}/{poly_annotations_file}.json'))
 
     not_found = []
     iou_results = []
@@ -42,7 +42,7 @@ def run(
             pic = read_image_as_numpyimage(file, 'rgb')
             pic_copy = pic.copy()
 
-            data = polygon_annp.filter_by_image(file.name)
+            data = polygon_ann.filter_by_image(file.name)
             points_gt = np.asarray(transform_annotation(pic, data.points))
             gt_left_top, gt_left_bottom, gt_right_top, gt_right_bottom = [(int(point[0]), int(point[1])) for point in get_corners(points_gt)]
 

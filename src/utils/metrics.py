@@ -34,3 +34,8 @@ def iou(
 
     return intersection / union if union > 0 else 0.0
 
+
+def relative_line_distance(a_true, b_true, a_est, b_est, eps=1e-12):
+    da = (a_est - a_true) / (abs(a_true) + eps)
+    db = (b_est - b_true) / (abs(b_true) + eps)
+    return np.sqrt(da**2 + db**2)
