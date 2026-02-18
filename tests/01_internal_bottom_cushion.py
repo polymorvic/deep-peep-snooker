@@ -48,10 +48,9 @@ def run(
                     'intercept_pred': pred_line.intercept if pred_line is not None else None,
                 }) 
             
-    colname = 'diff'
     output_filename = test_out_dir.parent.name
-    res_df = prepare_test_results_report(test_out_dir, results, output_filename, colname, not_found)
-    save_test_histogram(test_out_dir, res_df, colname, f'{output_filename}-hist')
+    res_df = prepare_test_results_report(test_out_dir, results, output_filename, not_found)
+    save_test_histogram(test_out_dir, res_df, f'{output_filename}-hist')
 
 
 if __name__ == '__main__':

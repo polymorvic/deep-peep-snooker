@@ -22,7 +22,6 @@ def prepare_test_results_report(
         dir: str | Path,
         data: list[dict],
         filename: str,
-        agg_colname: str,
         not_found_pic_names: list[str],
         sheet_name1: str = 'results', 
         sheet_name2: str = 'stats') -> pd.DataFrame | None:
@@ -32,16 +31,23 @@ def prepare_test_results_report(
 
     with pd.ExcelWriter(Path(dir) / f'{filename}.xlsx', engine='openpyxl') as writer:
         results_df = pd.DataFrame(data)
+
+        diff = results_df['intercept_ref'] - results_df['intercept_pred']
+        results_df['measure'] = diff
+        results_df['abs_measure'] = diff.abs()
+
         results_df.to_excel(writer, sheet_name=sheet_name1, index=False)
 
         stats_df = (
-            results_df[agg_colname]
+            results_df['measure']
             .agg(['median', 'mean', 'std', 'min', 'max'])
             .to_frame()
             .T
         )
         stats_df['not_found'] = len(not_found_pic_names)
-        stats_df.to_excel(writer, sheet_name=sheet_name2)
+        stats_df.to_excel(writer, sheet_name=sheet_name2, index=False)
+
+    return results_df
 
 
 def save_test_histogram(
@@ -104,6 +110,12 @@ def build_output_dir(parent_dir: str | Path, test_type: TestType) -> Path:
     return out_dir
 
 
+def _compute_y_ref(points: np.ndarray, position: str) -> int:
+    y_sorted = np.sort(points[:, 1])
+    selected = y_sorted[-2:] if position == "bottom" else y_sorted[:2]
+    return int(np.median(selected))
+
+
 def test_cushion(pic_filepath: Path, 
                 polygon_ann: list[PolygonAnnotationData],
                 test_out_dir: Path,
@@ -122,12 +134,7 @@ def test_cushion(pic_filepath: Path,
     data = polygon_ann.filter_by_image(pic_name)
     pts_gt = np.asarray(transform_annotation(pic, data.points))
 
-    y_sorted = np.sort(pts_gt[:, 1])
-
-    if position == "bottom":
-        y_ref = int(np.median(y_sorted[-2:]))
-    else:
-        y_ref = int(np.median(y_sorted[:2]))
+    y_ref = _compute_y_ref(pts_gt, position)
 
     p1, p2 = line.limit_to_img(pic)
 
