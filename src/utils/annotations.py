@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from typing import Any
 
 import numpy as np
 from pydantic import ValidationError
@@ -17,6 +16,23 @@ def transform_annotation(
     """Converts percentage-based annotations to pixel coordinates."""
     arr = np.array(annotation) * np.array([img.width, img.height]) / 100
     return [Point(x, y) for x, y in arr] if isinstance(annotation, list) else arr.astype(np.float32)
+
+
+def transform_bbox(
+    img: array_like,
+    bbox: dict[str, float] | list[float] | np.ndarray,
+) -> dict[str, float] | np.ndarray:
+    """Converts percentage-based bbox (x,y,w,h) to pixel coordinates."""
+    if isinstance(bbox, dict):
+        sx, sy = img.width / 100, img.height / 100
+        return {
+            "x": float(bbox["x"] * sx),
+            "y": float(bbox["y"] * sy),
+            "width": float(bbox["width"] * sx),
+            "height": float(bbox["height"] * sy),
+        }
+    arr = np.asarray(bbox, dtype=np.float32) * np.array([img.width, img.height, img.width, img.height], dtype=np.float32) / 100
+    return arr
 
 
 class PolygonAnnotation(Annotation):
