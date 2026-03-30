@@ -1,12 +1,14 @@
+from abc import ABC, abstractmethod
 import json
+from typing import Literal
 from pathlib import Path
 
 import numpy as np
-from pydantic import ValidationError
 
-from src.utils.common import array_like, Annotation
+from src.utils.const import BallColor
+from src.utils.common import array_like
 from src.utils.points import Point
-from src.utils.schemas import PolygonAnnotationData
+from src.utils.schemas import ImageMetaData, Ball, ImageAnnotation, ImageBallAnnotation, BBox, ImagePlayfieldAnnotation
 
 
 def transform_annotation(
@@ -35,117 +37,184 @@ def transform_bbox(
     return arr
 
 
-class PolygonAnnotation(Annotation):
-    """Annotation handler for polygon-shaped annotations.
-    
-    Processes raw annotation data containing polygon coordinates and extracts
-    polygon points along with associated image metadata (filename, dimensions).
-    
-    The cleaned annotations contain:
-        - 'points': List of polygon point coordinates
-        - 'image': Dictionary with 'name', 'width', and 'height' keys
-    """
-    
-    def __init__(self, root_dir: Path) -> None:
-        """Initialize polygon annotation handler.
-        
-        Args:
-            root_dir: Path to directory containing annotation JSON files.
-        """
-        super().__init__(root_dir)
+_RawAnnotations = list[dict[Literal['filename', 'data'], str | list]]
+class AnnotationCollection[AT: ImageAnnotation](ABC):
 
-    @property
-    def clean_annotations(self) -> list[PolygonAnnotationData]:
-        """Extract and clean polygon annotation data from raw annotations.
+    def __init__(self, root_dir: Path, extension: str = 'json') -> None:
+        self._root_dir: Path = Path(root_dir)
+        self._raw_annotations: _RawAnnotations = self._concat_files(extension)
+        self.cleaned_annotations: list[AT] = self._clean_annotations()
+
+# classmethofd
+#     init from raw
+#     init from cleans
+
+
+    @staticmethod
+    @abstractmethod
+    def display_on_image(annotation: AT, image: array_like) -> array_like:
+        raise NotImplemented
+
+
+    @abstractmethod
+    def _clean_annotations(self) -> list[AT]:
+        raise NotImplemented
+
+
+    def _concat_files(self, extension: str = 'json') -> _RawAnnotations:
+        if extension != 'json':
+            raise NotImplemented
         
-        Processes raw annotation dictionaries to extract:
-        - Polygon point coordinates
-        - Image filename (with prefix removed)
-        - Original image dimensions
-        
-        Returns:
-            List of validated PolygonAnnotationData models.
-                
-        Note:
-            Invalid or malformed annotations are silently skipped. The result
-            is cached after first computation. All returned data is validated
-            using Pydantic models.
-        """
-        if self.cleaned_annotations is not None:
-            return self.cleaned_annotations
-        
-        if not self.raw_annotations:
-            self.cleaned_annotations = []
-            return []
-        
-        cleaned_annotations = []
-        for ann in self.raw_annotations:
-            try:
-                result = ann['annotations'][0]['result'][0]
-                image_path = ann['data']['image']
-                image_name = image_path.replace('\\', '/').split('/')[-1].split('-', 1)[-1]
-                
-                annotation_data = PolygonAnnotationData(
-                    points=result['value']['points'],
-                    image={
-                        'name': image_name,
-                        'width': result['original_width'],
-                        'height': result['original_height']
+        raw_annotations = []
+        for json_file in sorted(self._root_dir.glob(f'*.{extension}')):
+            with open(json_file, 'r') as f:
+                data = json.load(f)
+                raw_annotations.append(
+                    {
+                        "filename": json_file.stem,
+                        "data": data
                     }
-                )
-                cleaned_annotations.append(annotation_data)
-            except (KeyError, IndexError, TypeError, ValidationError):
-                continue
-        
-        self.cleaned_annotations = cleaned_annotations
-        return cleaned_annotations
-    
-    def filter_by_image(self, image_name: str):
-        """Filter cleaned annotations by image name.
-        
-        Args:
-            image_name: Name of the image to filter by (e.g., 'pic_01_04_01.png').
-            
-        Yields:
-            PolygonAnnotationData instances where image.name matches the given name.
-        """
-        for ann in self.clean_annotations:
+                )  
+        return raw_annotations
+
+
+    def filter_by_image(self, image_name: str) -> AT:
+        for ann in self.cleaned_annotations:
             if ann.image.name == image_name:
                 return ann
-    
-    def read(self, file_path: Path | str) -> None:
-        """Read annotation file and return a list of PolygonAnnotationData objects.
-        
-        Args:
-            file_path: Path to the annotation JSON file.
             
-        Returns:
-            List of PolygonAnnotationData instances parsed from the file.
-            
-        Raises:
-            FileNotFoundError: If the annotation file does not exist.
-            json.JSONDecodeError: If the file contains invalid JSON.
-            ValidationError: If any annotation data fails Pydantic validation.
-        """
+
+    def save(self, file_path: Path | str) -> None:
+        if not self.cleaned_annotations:
+            print('No data to be saved')
+            return
+
         file_path = Path(file_path)
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        data_to_save = [item.model_dump() for item in self.cleaned_annotations]
+
+        with open(file_path, 'w') as f:
+            json.dump(data_to_save, f, indent=4)
+
+        print('Data saved successfully')
+
+
+    @staticmethod
+    def _build_image_name(item: dict) -> str:
+        image_path = item.get("data", {}).get("image", "")
+        name = Path(image_path).name if image_path else item.get("file_upload", "")
+
+        if "-" in name:
+            return '-'.join(name.split("-", 1)[1:])
+        return name
+
+
+class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
+
+    @staticmethod
+    def _extract_results(item: dict) -> list[dict]:
+        annotations = item.get("annotations") or []
+        if not annotations:
+            return []
+        return annotations[0].get("result") or []
+    
+
+    @staticmethod
+    def _convert_item(source_filename: str, item: dict) -> ImageBallAnnotation:
+        results = BallAnnotationCollection._extract_results(item)
+        width = 0
+        height = 0
+        grouped: dict[str, list[BBox]] = {color: [] for color in BallColor}
+
+        for result in results:
+            value = result.get("value", {})
+            labels = value.get("rectanglelabels") or []
+            if not labels:
+                continue
+
+            color = labels[0]
+            if color not in grouped:
+                continue
+
+            width = result.get("original_width", width)
+            height = result.get("original_height", height)
+
+            grouped[color].append(
+                BBox(
+                    x=value["x"],
+                    y=value["y"],
+                    width=value["width"],
+                    height=value["height"],
+                )
+            )
+
+        return ImageBallAnnotation(
+            image=ImageMetaData(
+                source_file_name = source_filename,
+                name=BallAnnotationCollection._build_image_name(item),
+                width=width,
+                height=height,
+            ),
+            balls=[Ball(color=color, bboxes=grouped[color]) for color in BallColor],
+        )
+
+
+    def _clean_annotations(self) -> list[ImageBallAnnotation]:
+        return [self._convert_item(data['filename'], item) for data in self._raw_annotations for item in data['data']]
+    
+
+    def validate(self) -> None:
+        are_all_good = True
+        for item in self.cleaned_annotations:
+            for ball in item.balls:
+
+                ball_count = len(ball.bboxes)
+                is_invalid = False
+                match ball.color:
+                    case BallColor.RED:
+                        if ball_count > 15:
+                            is_invalid = True
+                    case _:
+                        if ball_count > 1:
+                            is_invalid = True
+
+                if is_invalid:
+                    are_all_good = False
+                    print(f'Uwaga liczba koloru {ball.color} jest równa {ball_count} na zdjeciu {item.image.name}')
+
+        if are_all_good:
+            print('Wszystkie oznaczenia są ok!')
+
+
+    def display_on_image(annotation, image: array_like) -> array_like:
+        return
+
+
+class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotation]):
+
+    def _clean_annotations(self):
+        cleaned_annotations = []
         
-        if not file_path.exists():
-            raise FileNotFoundError(f"Annotation file not found: {file_path}")
-        
-        with open(file_path, 'r') as f:
-            data = json.load(f)
-        
-        if not isinstance(data, list):
-            raise ValueError(f"Expected JSON array in annotation file, got {type(data).__name__}")
-        
-        annotations = []
-        for item in data:
-            try:
-                annotation_data = PolygonAnnotationData(**item)
-                annotations.append(annotation_data)
-            except ValidationError as e:
-                raise ValidationError(
-                    f"Failed to validate annotation data: {e.errors()}"
-                ) from e
-        
-        self.cleaned_annotations = annotations
+        for item in self._raw_annotations:
+            ann_data = item['data']
+
+            for subtitem in ann_data:
+                result = subtitem['annotations'][0]['result'][0]
+
+                annotation_data = ImagePlayfieldAnnotation(
+                    image = ImageMetaData(
+                        source_file_name = item['filename'],
+                        name=PlayfieldAnnotationCollection._build_image_name(subtitem),
+                        width=result['original_width'],
+                        height=result['original_height'],
+                    ),
+                    points=result['value']['points'],
+                )
+                cleaned_annotations.append(annotation_data)
+
+        return cleaned_annotations
+    
+
+    def display_on_image(annotation, image: array_like) -> array_like:
+        return
+    
