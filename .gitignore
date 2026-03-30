@@ -12,6 +12,7 @@ wheels/
 
 # folders
 pics/
+_old/
 
 # extensions
 # *.ipynb
@@ -31,3 +32,4 @@ pics/
 *webm
 
 .DS_Store
+.ipynb_checkpoints

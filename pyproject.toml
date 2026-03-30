@@ -1,25 +1,35 @@
 [project]
 name = "deep-peep-snooker"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.12"
 dependencies = [
-    "matplotlib>=3.10.7",
-    "opencv-python>=4.12.0.88",
+    "lightning",
+    "matplotlib>=3.10.8",
+    "opencv-python>=4.13.0.92",
     "pydantic>=2.12.5",
-    "pydantic-settings>=2.12.0",
+    "pydantic-settings>=2.13.1",
     "scikit-learn>=1.8.0",
     "shapely>=2.1.2",
-    "torch>=2.10.0",
-    "torchvision>=0.25.0",
+    "torch",
+    "torchvision",
 ]
+
+[tool.uv]
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
 
 [dependency-groups]
 dev = [
-    "ipykernel>=7.0.0",
-    "pandas>=2.3.3",
-    "openpyxl>=3.1.2",
+    "ipykernel>=7.2.0",
+    "jupyterlab>=4.5.6",
     "odfpy>=1.4.1",
-    "tyro>=1.0.5",
+    "openpyxl>=3.1.5",
+    "pandas>=3.0.1",
+    "tyro>=1.0.8",
 ]
