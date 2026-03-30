@@ -4,9 +4,10 @@ from typing import Literal, Type
 from pathlib import Path
 
 import numpy as np
+import cv2
 
 from src.utils.const import BallColor
-from src.utils.common import array_like
+from src.utils.common import array_like, NumpyImage
 from src.utils.points import Point
 from src.utils.schemas import ImageMetaData, Ball, ImageAnnotation, ImageBallAnnotation, BBox, ImagePlayfieldAnnotation
 
@@ -39,7 +40,6 @@ def transform_bbox(
 
 _RawAnnotations = list[dict[Literal['filename', 'data'], str | list]]
 class AnnotationCollection[AT: ImageAnnotation](ABC):
-    # Podklasy muszą ustawić ten atrybut (typ modelu Pydantic dla `cleaned_annotations`).
     annotation_model: Type[AT]
 
     def __init__(self, root_dir: Path, extension: str = 'json') -> None:
@@ -47,9 +47,8 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
         self._raw_annotations: _RawAnnotations = self._concat_files(extension)
         self.cleaned_annotations: list[AT] = self._clean_annotations()
 
-# classmethofd
-#     init from raw
-#     init from cleans
+    # classmethofd
+    #     init from raw
 
     @classmethod
     def from_cleans(cls, file_path: Path | str) -> "AnnotationCollection[AT]":
@@ -127,6 +126,8 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
 
 
 class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
+    annotation_model = ImageBallAnnotation
+
 
     @staticmethod
     def _extract_results(item: dict) -> list[dict]:
@@ -203,8 +204,21 @@ class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
             print('Wszystkie oznaczenia są ok!')
 
 
-    def display_on_image(annotation, image: array_like) -> array_like:
-        return
+    @staticmethod
+    def display_on_image(annotation: ImageBallAnnotation, image: array_like, frame_color: tuple[int] = (255, 0, 0)) -> array_like:
+        img = np.asarray(image).copy()
+        nim = NumpyImage(img)
+
+        for ball in annotation.balls:
+            for bb in ball.bboxes:
+                px = transform_bbox(nim, bb.model_dump())
+                x1 = int(round(px["x"]))
+                y1 = int(round(px["y"]))
+                x2 = int(round(px["x"] + px["width"]))
+                y2 = int(round(px["y"] + px["height"]))
+                cv2.rectangle(img, (x1, y1), (x2, y2), frame_color, 2)
+
+        return img
 
 
 class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotation]):
@@ -234,6 +248,16 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
         return cleaned_annotations
     
 
-    def display_on_image(annotation, image: array_like) -> array_like:
-        return
+    @staticmethod
+    def display_on_image(annotation: ImagePlayfieldAnnotation, image: array_like, frame_color: tuple[int] = (255, 0, 0)) -> array_like:
+        img = np.asarray(image).copy()
+        nim = NumpyImage(img)
+
+        pts = transform_annotation(nim, annotation.points)
+        arr = np.array([[int(round(p.x)), int(round(p.y))] for p in pts], dtype=np.int32)
+
+        if len(arr) >= 2:
+            cv2.polylines(img, [arr.reshape((-1, 1, 2))], True, frame_color, 2)
+
+        return img
     
