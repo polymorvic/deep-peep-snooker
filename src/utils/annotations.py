@@ -75,6 +75,11 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
     @abstractmethod
     def _clean_annotations(self) -> list[AT]:
         raise NotImplemented
+    
+
+    @abstractmethod
+    def validate(self) -> None:
+        raise NotImplemented
 
 
     def _concat_files(self, extension: str = 'json') -> _RawAnnotations:
@@ -246,6 +251,46 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
                 cleaned_annotations.append(annotation_data)
 
         return cleaned_annotations
+    
+
+    def validate(self) -> None:
+        are_all_good = True
+
+        for item in self.cleaned_annotations:
+            pts = item.points
+            is_invalid = False
+
+            if not isinstance(pts, list) or len(pts) != 4:
+                is_invalid = True
+            else:
+                flat_vals: list[float] = []
+                for p in pts:
+                    if not isinstance(p, list) or len(p) != 2:
+                        is_invalid = True
+                        break
+                    for v in p:
+                        if not isinstance(v, (int, float)):
+                            is_invalid = True
+                            break
+                        fv = float(v)
+                        flat_vals.append(fv)
+                        if fv < 0.0:
+                            is_invalid = True
+                            break
+                    if is_invalid:
+                        break
+
+                if not is_invalid and flat_vals:
+                    max_allowed = 1.0 if max(flat_vals) <= 1.0 else 100.0
+                    if any(v > max_allowed for v in flat_vals):
+                        is_invalid = True
+
+            if is_invalid:
+                are_all_good = False
+                print(f"Uwaga: adnotacja playfield jest niepoprawna na zdjeciu {item.image.name}")
+
+        if are_all_good:
+            print("Wszystkie oznaczenia są ok!")
     
 
     @staticmethod
