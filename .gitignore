@@ -12,6 +12,7 @@ wheels/
 
 # folders
 pics/
+_old/
 
 # extensions
 # *.ipynb
