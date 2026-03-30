@@ -1,19 +1,41 @@
-"""Pydantic data models for annotation schemas."""
-
 from pydantic import BaseModel
 
+from .const import BallColor
 
-class ImageData(BaseModel):
-    """Image metadata associated with an annotation.
-    
-    Attributes:
-        name: Image filename.
-        width: Original image width in pixels.
-        height: Original image height in pixels.
-    """
+
+class ImageMetaData(BaseModel):
     name: str
     width: int
     height: int
+    source_file_name: str
+
+
+class BBox(BaseModel):
+    x: float
+    y: float
+    width: float
+    height: float
+
+
+class Ball(BaseModel):
+    color: BallColor
+    bboxes: list[BBox]
+
+
+class ImageAnnotation(BaseModel):
+    image: ImageMetaData
+
+
+class ImageBallAnnotation(ImageAnnotation):
+    balls: list[Ball]
+
+
+class ImagePolygonAnnotation(ImageAnnotation):
+    points: list[list[float]]
+
+
+
+
 
 
 class PolygonAnnotationData(BaseModel):
@@ -26,7 +48,7 @@ class PolygonAnnotationData(BaseModel):
         image: Image metadata containing filename and dimensions.
     """
     points: list[list[float]]
-    image: ImageData
+    image: ImageMetaData
 
 
 class PolygonAnnotationList(BaseModel):
