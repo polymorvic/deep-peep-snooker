@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import json
-from typing import Literal
+from typing import Literal, Type
 from pathlib import Path
 
 import numpy as np
@@ -39,6 +39,8 @@ def transform_bbox(
 
 _RawAnnotations = list[dict[Literal['filename', 'data'], str | list]]
 class AnnotationCollection[AT: ImageAnnotation](ABC):
+    # Podklasy muszą ustawić ten atrybut (typ modelu Pydantic dla `cleaned_annotations`).
+    annotation_model: Type[AT]
 
     def __init__(self, root_dir: Path, extension: str = 'json') -> None:
         self._root_dir: Path = Path(root_dir)
@@ -48,6 +50,21 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
 # classmethofd
 #     init from raw
 #     init from cleans
+
+    @classmethod
+    def from_cleans(cls, file_path: Path | str) -> "AnnotationCollection[AT]":
+        file_path = Path(file_path)
+
+        with file_path.open(encoding="utf-8") as f:
+            raw_cleaned = json.load(f)
+
+        cleaned = [cls.annotation_model.model_validate(item) for item in raw_cleaned]
+
+        obj = cls.__new__(cls)
+        obj._root_dir = file_path.parent
+        obj._raw_annotations = []
+        obj.cleaned_annotations = cleaned
+        return obj
 
 
     @staticmethod
@@ -191,10 +208,12 @@ class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
 
 
 class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotation]):
+    annotation_model = ImagePlayfieldAnnotation
+
 
     def _clean_annotations(self):
         cleaned_annotations = []
-        
+
         for item in self._raw_annotations:
             ann_data = item['data']
 
