@@ -106,19 +106,31 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
                 if self.cleaned_annotations[i] == self.cleaned_annotations[j]:
                     duplicates.add(self.cleaned_annotations[j])
 
-
         if not duplicates:
             print('Nie ma duplikatow')
 
         else:
-            print('Są duplikaty:')
+            print(f'Są duplikaty {len(duplicates)} :')
             for item in duplicates:
                 print(item.image.name)
 
 
+    def remove_duplicates(self) -> None:
+        if self.cleaned_annotations is None:
+            raise ValueError('Clean annotations not set')
 
+        unique_items: list[AT] = []
+        seen: set[AT] = set()
 
+        for item in self.cleaned_annotations:
+            if item in seen:
+                continue
+            seen.add(item)
+            unique_items.append(item)
 
+        removed_count = len(self.cleaned_annotations) - len(unique_items)
+        self.cleaned_annotations[:] = unique_items
+        print(f'Usunięto {removed_count} duplikatów')
 
 
     def _concat_files(self, extension: str = 'json') -> _RawAnnotations:
