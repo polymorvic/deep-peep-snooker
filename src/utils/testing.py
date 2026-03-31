@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .annotations import transform_annotation, PolygonAnnotationData
+from .annotations import transform_annotation, PlayfieldAnnotationCollection
 from .common import NumpyImage
 from .func import read_image_as_numpyimage
 from .lines import Line
@@ -62,13 +62,17 @@ def save_test_histogram(
 
     series = df[colname].dropna()
 
+    if series.dtype == "object" and not series.empty and isinstance(series.iloc[0], Line):
+        series = series.map(lambda l: l.intercept).dropna()
+    else:
+        series = pd.to_numeric(series, errors="coerce").dropna()
+
     if series.empty:
         raise ValueError(f"Column '{colname}' is empty.")
 
-    min_val = series.min()
-    max_val = series.max()
-
-    bins = np.arange(min_val, max_val + 1, 1)
+    data = series.to_numpy()
+    is_int_like = np.allclose(data, np.round(data))
+    bins = np.arange(int(data.min()), int(data.max()) + 2, 1) if is_int_like else "auto"
     output_path = Path(dir) / f"{filename}.png"
 
     plt.figure()
@@ -116,11 +120,12 @@ def _compute_y_ref(points: np.ndarray, position: str) -> int:
     return int(np.median(selected))
 
 
-def test_cushion(pic_filepath: Path, 
-                polygon_ann: list[PolygonAnnotationData],
-                test_out_dir: Path,
-                position: Literal["top", "bottom"]
-                ) -> tuple[Line, int]:
+def test_cushion(
+        pic_filepath: Path, 
+        polygon_ann: PlayfieldAnnotationCollection,
+        test_out_dir: Path,
+        position: Literal["top", "bottom"]
+    ) -> tuple[Line, int]:
 
     pic_name = pic_filepath.name
     pic = read_image_as_numpyimage(pic_filepath, "rgb")
