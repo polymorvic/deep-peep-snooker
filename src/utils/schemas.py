@@ -1,5 +1,6 @@
 from pydantic import BaseModel
 
+from .common import Hashable
 from .const import BallColor
 
 
@@ -22,14 +23,50 @@ class Ball(BaseModel):
     bboxes: list[BBox]
 
 
-class ImageAnnotation(BaseModel):
+class ImageAnnotation(Hashable, BaseModel):
     image: ImageMetaData
+
+    def __hash__(self) -> int:
+        return Hashable.__hash__(self)
+
+    def __eq__(self, other: object) -> bool:
+        return Hashable.__eq__(self, other)
 
 
 class ImageBallAnnotation(ImageAnnotation):
     balls: list[Ball]
 
+    def _key_(self) -> tuple:
+        image_key = (
+            self.image.source_file_name,
+            self.image.name,
+            self.image.width,
+            self.image.height,
+        )
+
+        balls_key = tuple(
+            (ball.color, tuple((bb.x, bb.y, bb.width, bb.height) for bb in ball.bboxes))
+            for ball in self.balls
+        )
+        return image_key, balls_key
+
+    def key(self) -> tuple:
+        return self._key_()
+
 
 class ImagePlayfieldAnnotation(ImageAnnotation):
     points: list[list[float]]
+
+    def _key_(self) -> tuple:
+        image_key = (
+            self.image.source_file_name,
+            self.image.name,
+            self.image.width,
+            self.image.height,
+        )
+        points_key = tuple((point[0], point[1]) for point in self.points)
+        return image_key, points_key
+
+    def key(self) -> tuple:
+        return self._key_()
 

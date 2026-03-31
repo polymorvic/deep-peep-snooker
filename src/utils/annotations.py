@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import json
-from typing import Literal, Type
+from typing import Literal, Type, Self
 from pathlib import Path
 
 import numpy as np
@@ -42,28 +42,33 @@ _RawAnnotations = list[dict[Literal['filename', 'data'], str | list]]
 class AnnotationCollection[AT: ImageAnnotation](ABC):
     annotation_model: Type[AT]
 
-    def __init__(self, root_dir: Path, extension: str = 'json') -> None:
+    def __init__(self, 
+                 root_dir: Path | str, 
+                 raw_annotations: _RawAnnotations | None = None,
+                 cleaned_annotations: list[AT] | None = None
+                ) -> None:
         self._root_dir: Path = Path(root_dir)
-        self._raw_annotations: _RawAnnotations = self._concat_files(extension)
-        self.cleaned_annotations: list[AT] = self._clean_annotations()
+        self._raw_annotations = raw_annotations
+        self.cleaned_annotations = cleaned_annotations
 
-    # classmethofd
-    #     init from raw
 
     @classmethod
-    def from_cleans(cls, file_path: Path | str) -> "AnnotationCollection[AT]":
+    def from_raw_dir(cls, root_dir: Path | str, extension: str = 'json') -> Self:
+        obj = cls(root_dir)
+        obj._raw_annotations = obj._concat_files(extension)
+        obj.cleaned_annotations = obj._clean_annotations()
+        return obj
+
+
+    @classmethod
+    def from_clean_file(cls, file_path: Path | str) -> Self:
         file_path = Path(file_path)
 
         with file_path.open(encoding="utf-8") as f:
             raw_cleaned = json.load(f)
 
         cleaned = [cls.annotation_model.model_validate(item) for item in raw_cleaned]
-
-        obj = cls.__new__(cls)
-        obj._root_dir = file_path.parent
-        obj._raw_annotations = []
-        obj.cleaned_annotations = cleaned
-        return obj
+        return cls(file_path.parent, [], cleaned)
 
 
     @staticmethod
@@ -78,8 +83,54 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
     
 
     @abstractmethod
-    def validate(self) -> None:
+    def _validate(self) -> None:
         raise NotImplemented
+    
+
+    def validate(self) -> None:
+        self._validate()
+        self._check_duplicates()
+    
+
+    def _check_duplicates(self) -> None:
+        if not self.cleaned_annotations:
+            raise ValueError('Clean annotations not set')
+        
+        duplicates = set()
+        for i in range(len(self.cleaned_annotations)):
+            for j in range(len(self.cleaned_annotations)):
+
+                if i == j:
+                    continue
+
+                if self.cleaned_annotations[i] == self.cleaned_annotations[j]:
+                    duplicates.add(self.cleaned_annotations[j])
+
+        if not duplicates:
+            print('Nie ma duplikatow')
+
+        else:
+            print(f'Są duplikaty {len(duplicates)} :')
+            for item in duplicates:
+                print(item.image.name)
+
+
+    def remove_duplicates(self) -> None:
+        if self.cleaned_annotations is None:
+            raise ValueError('Clean annotations not set')
+
+        unique_items: list[AT] = []
+        seen: set[AT] = set()
+
+        for item in self.cleaned_annotations:
+            if item in seen:
+                continue
+            seen.add(item)
+            unique_items.append(item)
+
+        removed_count = len(self.cleaned_annotations) - len(unique_items)
+        self.cleaned_annotations[:] = unique_items
+        print(f'Usunięto {removed_count} duplikatów')
 
 
     def _concat_files(self, extension: str = 'json') -> _RawAnnotations:
@@ -186,7 +237,7 @@ class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
         return [self._convert_item(data['filename'], item) for data in self._raw_annotations for item in data['data']]
     
 
-    def validate(self) -> None:
+    def _validate(self) -> None:
         are_all_good = True
         for item in self.cleaned_annotations:
             for ball in item.balls:
@@ -253,7 +304,7 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
         return cleaned_annotations
     
 
-    def validate(self) -> None:
+    def _validate(self) -> None:
         are_all_good = True
 
         for item in self.cleaned_annotations:
@@ -291,6 +342,8 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
 
         if are_all_good:
             print("Wszystkie oznaczenia są ok!")
+
+        # warunek na trapez czyli gorne punkty maja byc bardziej wewnatrz niz dolne
     
 
     @staticmethod

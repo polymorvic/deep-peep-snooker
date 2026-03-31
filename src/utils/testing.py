@@ -8,11 +8,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from .annotations import transform_annotation, PolygonAnnotationData
+from .annotations import transform_annotation, PlayfieldAnnotationCollection
 from .common import NumpyImage
-from .func import read_image_as_numpyimage
+from .func import read_image_as_numpyimage, get_corners
+from .intersections import compute_intersections
 from .lines import Line
+from .metrics import iou
 from .playfield_finder import PlayfieldFinder
+from .plotting import plot_on_image
 
 
 TestType = Literal["bottom", "top", "left", "right", "iou"]
@@ -50,6 +53,39 @@ def prepare_test_results_report(
     return results_df
 
 
+def prepare_single_metric_report(
+        dir: str | Path,
+        data: list[dict],
+        filename: str,
+        metric_col: str,
+        not_found_pic_names: list[str],
+        sheet_name1: str = "results",
+        sheet_name2: str = "stats",
+    ) -> pd.DataFrame:
+    if not data:
+        raise ValueError("Input data is empty!")
+
+    results_df = pd.DataFrame(data)
+    valid_series = pd.to_numeric(results_df[metric_col], errors="coerce").dropna()
+
+    stats_df = pd.DataFrame(
+        [{
+            "median": valid_series.median() if not valid_series.empty else np.nan,
+            "mean": valid_series.mean() if not valid_series.empty else np.nan,
+            "std": valid_series.std(ddof=0) if not valid_series.empty else np.nan,
+            "min": valid_series.min() if not valid_series.empty else np.nan,
+            "max": valid_series.max() if not valid_series.empty else np.nan,
+            "not_found": len(not_found_pic_names),
+        }]
+    )
+
+    with pd.ExcelWriter(Path(dir) / f"{filename}.xlsx", engine="openpyxl") as writer:
+        results_df.to_excel(writer, sheet_name=sheet_name1, index=False)
+        stats_df.to_excel(writer, sheet_name=sheet_name2, index=False)
+
+    return results_df
+
+
 def save_test_histogram(
     dir: str | Path,
     df: pd.DataFrame,
@@ -62,13 +98,17 @@ def save_test_histogram(
 
     series = df[colname].dropna()
 
+    if series.dtype == "object" and not series.empty and isinstance(series.iloc[0], Line):
+        series = series.map(lambda l: l.intercept).dropna()
+    else:
+        series = pd.to_numeric(series, errors="coerce").dropna()
+
     if series.empty:
         raise ValueError(f"Column '{colname}' is empty.")
 
-    min_val = series.min()
-    max_val = series.max()
-
-    bins = np.arange(min_val, max_val + 1, 1)
+    data = series.to_numpy()
+    is_int_like = np.allclose(data, np.round(data))
+    bins = np.arange(int(data.min()), int(data.max()) + 2, 1) if is_int_like else "auto"
     output_path = Path(dir) / f"{filename}.png"
 
     plt.figure()
@@ -116,11 +156,12 @@ def _compute_y_ref(points: np.ndarray, position: str) -> int:
     return int(np.median(selected))
 
 
-def test_cushion(pic_filepath: Path, 
-                polygon_ann: list[PolygonAnnotationData],
-                test_out_dir: Path,
-                position: Literal["top", "bottom"]
-                ) -> tuple[Line, int]:
+def test_cushion(
+        pic_filepath: Path, 
+        polygon_ann: PlayfieldAnnotationCollection,
+        test_out_dir: Path,
+        position: Literal["top", "bottom"]
+    ) -> tuple[Line, int]:
 
     pic_name = pic_filepath.name
     pic = read_image_as_numpyimage(pic_filepath, "rgb")
@@ -143,3 +184,112 @@ def test_cushion(pic_filepath: Path,
     cv2.imwrite(str(test_out_dir / f"test_{position}_{pic_name}"), img)
 
     return line, y_ref
+
+
+def test_iou(
+        pic_filepath: Path,
+        polygon_ann: PlayfieldAnnotationCollection,
+        test_out_dir: Path,
+    ) -> float:
+    pic_name = pic_filepath.name
+    pic = read_image_as_numpyimage(pic_filepath, "rgb")
+    pic_copy = pic.copy()
+
+    data = polygon_ann.filter_by_image(pic_name)
+    points_gt = np.asarray(transform_annotation(pic, data.points))
+    gt_left_top, gt_left_bottom, gt_right_top, gt_right_bottom = [
+        (int(point[0]), int(point[1])) for point in get_corners(points_gt)
+    ]
+    pic_copy = plot_on_image(
+        pic_copy,
+        polygons=[[gt_left_top, gt_left_bottom, gt_right_bottom, gt_right_top]],
+    )
+
+    finder = PlayfieldFinder(pic)
+    bottom_cushion = finder.find_bottom_internal_cushion()
+    top_cushion = finder.find_top_internal_cushion()
+    side_lines = finder.find_internal_side_cushions()
+
+    all_lines = [bottom_cushion, top_cushion, *side_lines]
+    internal_intersections = compute_intersections(all_lines, pic)
+    lt, lb, rt, rb = get_corners(
+        PlayfieldFinder.intersection_to_points_array(internal_intersections)
+    )
+
+    pic_copy = plot_on_image(
+        pic_copy,
+        polygons=[[lt, lb, rb, rt]],
+        polygon_color=(255, 0, 0),
+    )
+    iou_result = iou(points_gt, [lt, lb, rb, rt])
+
+    iou_text = f"IOU: {iou_result:.3f}"
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    font_scale = 1.0
+    thickness = 2
+    (text_width, text_height), baseline = cv2.getTextSize(
+        iou_text, font, font_scale, thickness
+    )
+    cv2.rectangle(
+        pic_copy,
+        (10, 10),
+        (10 + text_width + 10, 10 + text_height + baseline + 10),
+        (0, 0, 0),
+        -1,
+    )
+    cv2.putText(
+        pic_copy,
+        iou_text,
+        (15, 10 + text_height),
+        font,
+        font_scale,
+        (0, 255, 0),
+        thickness,
+    )
+
+    legend_x = 15
+    legend_y_start = 25 + text_height + baseline
+    legend_box = 14
+    legend_gap = 24
+    legend_thickness = -1
+
+    cv2.rectangle(
+        pic_copy,
+        (legend_x, legend_y_start),
+        (legend_x + legend_box, legend_y_start + legend_box),
+        (0, 255, 0),
+        legend_thickness,
+    )
+    cv2.putText(
+        pic_copy,
+        "ground truth",
+        (legend_x + legend_box + 8, legend_y_start + legend_box - 2),
+        font,
+        0.5,
+        (255, 255, 255),
+        1,
+    )
+
+    legend_y2 = legend_y_start + legend_gap
+    cv2.rectangle(
+        pic_copy,
+        (legend_x, legend_y2),
+        (legend_x + legend_box, legend_y2 + legend_box),
+        (255, 0, 0),
+        legend_thickness,
+    )
+    cv2.putText(
+        pic_copy,
+        "result",
+        (legend_x + legend_box + 8, legend_y2 + legend_box - 2),
+        font,
+        0.5,
+        (255, 255, 255),
+        1,
+    )
+    cv2.imwrite(
+        str(test_out_dir / f"test_iou_{pic_name}"),
+        cv2.cvtColor(pic_copy, cv2.COLOR_RGB2BGR),
+    )
+
+    return float(iou_result)
