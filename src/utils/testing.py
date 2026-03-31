@@ -227,19 +227,18 @@ def test_iou(
     font = cv2.FONT_HERSHEY_SIMPLEX
     font_scale = 1.0
     thickness = 2
-    pic_bgr = cv2.cvtColor(pic_copy, cv2.COLOR_RGB2BGR)
     (text_width, text_height), baseline = cv2.getTextSize(
         iou_text, font, font_scale, thickness
     )
     cv2.rectangle(
-        pic_bgr,
+        pic_copy,
         (10, 10),
         (10 + text_width + 10, 10 + text_height + baseline + 10),
         (0, 0, 0),
         -1,
     )
     cv2.putText(
-        pic_bgr,
+        pic_copy,
         iou_text,
         (15, 10 + text_height),
         font,
@@ -247,6 +246,50 @@ def test_iou(
         (0, 255, 0),
         thickness,
     )
-    cv2.imwrite(str(test_out_dir / f"test_iou_{pic_name}"), pic_bgr)
+
+    legend_x = 15
+    legend_y_start = 25 + text_height + baseline
+    legend_box = 14
+    legend_gap = 24
+    legend_thickness = -1
+
+    cv2.rectangle(
+        pic_copy,
+        (legend_x, legend_y_start),
+        (legend_x + legend_box, legend_y_start + legend_box),
+        (0, 255, 0),
+        legend_thickness,
+    )
+    cv2.putText(
+        pic_copy,
+        "ground truth",
+        (legend_x + legend_box + 8, legend_y_start + legend_box - 2),
+        font,
+        0.5,
+        (255, 255, 255),
+        1,
+    )
+
+    legend_y2 = legend_y_start + legend_gap
+    cv2.rectangle(
+        pic_copy,
+        (legend_x, legend_y2),
+        (legend_x + legend_box, legend_y2 + legend_box),
+        (255, 0, 0),
+        legend_thickness,
+    )
+    cv2.putText(
+        pic_copy,
+        "result",
+        (legend_x + legend_box + 8, legend_y2 + legend_box - 2),
+        font,
+        0.5,
+        (255, 255, 255),
+        1,
+    )
+    cv2.imwrite(
+        str(test_out_dir / f"test_iou_{pic_name}"),
+        cv2.cvtColor(pic_copy, cv2.COLOR_RGB2BGR),
+    )
 
     return float(iou_result)
