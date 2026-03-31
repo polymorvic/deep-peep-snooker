@@ -14,7 +14,7 @@ def run(
     parent_dir: str | Path = 'results'
     ) -> None:
     '''
-    uv run python -m tests.01_internal_bottom_cushion --pics-dir data/pics --poly_annotations-file-path data/playfield_gt.json --test-type BOTTOM
+    uv run python -m tests.playfield --pics-dir data/pics --poly_annotations-file-path data/playfield_gt.json --test-type BOTTOM
     '''
     proj_cwd = Path.cwd()
     pics_dir =  proj_cwd / pics_dir
