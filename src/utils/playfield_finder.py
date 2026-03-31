@@ -83,6 +83,12 @@ class PlayfieldFinder:
         self.preprocessed_img = None
         self.straighted_mask = None
         self.external_edges_intersections = None
+        self.external_bounds = {
+            'top': Line(),
+            'bottom': Line(),
+            'left': Line(),
+            'right': Line(),
+        }
         self.center = self._get_center_point()
         self.vertical_axis = self._create_vertical_axis()
         self.horizontal_axis = self._create_horizontal_axis()
@@ -91,6 +97,18 @@ class PlayfieldFinder:
         self.upper_bound_l = None
 
         self._preprocess_image()
+
+    @staticmethod
+    def assign_external_lines(lines: list[Line], slope_eps: float = 0.1) -> dict[str, Line]:
+        horizontal = [line for line in lines if line.slope is not None and abs(line.slope) <= slope_eps and line.intercept is not None]
+        side_lines = [line for line in lines if line.slope is not None and abs(line.slope) > slope_eps]
+
+        top = min(horizontal, key=lambda line: line.intercept) if horizontal else Line()
+        bottom = max(horizontal, key=lambda line: line.intercept) if horizontal else Line()
+        left = next((line for line in side_lines if line.slope < 0), Line())
+        right = next((line for line in side_lines if line.intercept is not None and line.intercept > 0), next((line for line in side_lines if line.slope > 0), Line()))
+
+        return {"top": top, "bottom": bottom, "left": left, "right": right}
 
 
     @staticmethod
@@ -147,6 +165,7 @@ class PlayfieldFinder:
         
         lines = convert_hough_segments_to_lines(segments)
         lines = select_lines(lines)
+        self.external_bounds = self.assign_external_lines(lines)
         intersections = compute_intersections(lines, self.img)
 
         pic_copy = self.img.copy()
@@ -163,7 +182,7 @@ class PlayfieldFinder:
         # display_img(copy_edges)
         # display_img(pic_copy)
         # return binary_mask, binary_mask_close, straighted_binary_mask, edges, copy_edges, pic_copy
-
+   
         self.preprocessed_img = pic_copy
         self.straighted_mask = straighted_binary_mask
         self.external_edges_intersection_points = PlayfieldFinder.intersection_to_points_array(intersections)
@@ -270,9 +289,9 @@ class PlayfieldFinder:
                 
                 return bottom_line_global
             else:
-                return None
+                return self.external_bounds['bottom']
         else:
-            return None
+            return self.external_bounds['bottom']
 
 
     def find_internal_side_cushions(self) -> tuple[Line, Line] | None:
@@ -354,10 +373,10 @@ class PlayfieldFinder:
         try:    
             global_left_internal_side_cushion = transform_line(left_line, left_img, left_x_start, left_y_start)
         except Exception as e:
-            pass
+            global_left_internal_side_cushion = self.external_bounds['left']
         try:
             global_right_internal_side_cushion = transform_line(right_line, right_img, right_x_start, right_y_start)
         except Exception as e:
-            pass
+            global_right_internal_side_cushion = self.external_bounds['right']
 
         return global_left_internal_side_cushion, global_right_internal_side_cushion
