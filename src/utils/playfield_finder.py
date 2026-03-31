@@ -99,7 +99,7 @@ class PlayfieldFinder:
         self._preprocess_image()
 
     @staticmethod
-    def assign_external_lines(lines: list[Line], slope_eps: float = 0.1) -> dict[str, Line]:
+    def _assign_external_lines(lines: list[Line], slope_eps: float = 0.1) -> dict[str, Line]:
         horizontal = [line for line in lines if line.slope is not None and abs(line.slope) <= slope_eps and line.intercept is not None]
         side_lines = [line for line in lines if line.slope is not None and abs(line.slope) > slope_eps]
 
@@ -109,7 +109,6 @@ class PlayfieldFinder:
         right = next((line for line in side_lines if line.intercept is not None and line.intercept > 0), next((line for line in side_lines if line.slope > 0), Line()))
 
         return {"top": top, "bottom": bottom, "left": left, "right": right}
-
 
     @staticmethod
     def intersection_to_points_array(intersections: list[Intersection]) -> np.ndarray[int]:
@@ -137,7 +136,7 @@ class PlayfieldFinder:
 
     def _preprocess_image(
         self, 
-        kernel_size: int = 21,
+        kernel_size: int = 5,
         canny_thresh_lower: int = 150, 
         canny_thresh_upper: int = 200, 
         hough_thresh: int = 50, 
@@ -159,13 +158,14 @@ class PlayfieldFinder:
             maxLineGap=hough_max_line_gap
         )
         copy_edges = self.img.copy()
-        for segment in segments:
-            x1, y1, x2, y2 = segment[0]
-            cv2.line(copy_edges, (x1, y1), (x2, y2), (255, 0, 0), 5)
-        
+        if segments is not None:
+            for segment in segments:
+                x1, y1, x2, y2 = segment[0]
+                cv2.line(copy_edges, (x1, y1), (x2, y2), (255, 0, 0), 5)
+
         lines = convert_hough_segments_to_lines(segments)
         lines = select_lines(lines)
-        self.external_bounds = self.assign_external_lines(lines)
+        self.external_bounds = self._assign_external_lines(lines)
         intersections = compute_intersections(lines, self.img)
 
         pic_copy = self.img.copy()
@@ -200,8 +200,11 @@ class PlayfieldFinder:
         cropped_by_points = self.img[y_crop_start:y2, x_crop_start:x2]
 
         H = cropped_by_points.height
+        if H <= 0:
+            return self.external_bounds['top']
+
         roi_y_start_local = 0
-        roi_y_end_local = int(0.1*H)
+        roi_y_end_local = max(1, int(0.1 * H))
 
         roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
     
@@ -254,19 +257,30 @@ class PlayfieldFinder:
         cropped_by_points, x_start, original_y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
 
         H = cropped_by_points.height
-        roi_y_start_local = int(0.95*H)
+        if H <= 0:
+            return self.external_bounds['bottom']
+
+        roi_y_start_local = min(H - 1, int(0.95 * H))
         roi_y_end_local = H
-        
-        while True:
+
+        found_roi = False
+        while roi_y_start_local >= 0 and roi_y_end_local > roi_y_start_local:
             roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
+            if roi.size == 0:
+                break
+
             hsv_roi = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
             bin_roi = cv2.inRange(hsv_roi, GREEN_LOWER_BOUND, GREEN_UPPER_BOUND)
             white_ratio = cv2.countNonZero(bin_roi) / bin_roi.size
 
             if white_ratio > 0.5:
+                found_roi = True
                 break
             roi_y_start_local -= 1
             roi_y_end_local -= 1
+
+        if not found_roi:
+            return self.external_bounds['bottom']
 
         _, _, v = cv2.split(hsv_roi)
 
