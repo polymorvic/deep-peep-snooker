@@ -111,6 +111,18 @@ class PlayfieldFinder:
         return {"top": top, "bottom": bottom, "left": left, "right": right}
 
     @staticmethod
+    def _is_line_found(line: Line) -> bool:
+        return line.slope is not None or line.intercept is not None or line.xv is not None
+
+    def _validate_external_bounds(self) -> None:
+        missing_bounds = [
+            name for name, line in self.external_bounds.items()
+            if not self._is_line_found(line)
+        ]
+        if missing_bounds:
+            raise ValueError(f"Playfield not found: missing external bounds {missing_bounds}")
+
+    @staticmethod
     def intersection_to_points_array(intersections: list[Intersection]) -> np.ndarray[int]:
         intersections = sorted(intersections, key=lambda inter: (inter.point.y, inter.point.x))
         return np.array([[int(inter.point.x), int(inter.point.y)] for inter in intersections])
@@ -166,6 +178,9 @@ class PlayfieldFinder:
         lines = convert_hough_segments_to_lines(segments)
         lines = select_lines(lines)
         self.external_bounds = self._assign_external_lines(lines)
+        
+        self._validate_external_bounds()
+        
         intersections = compute_intersections(lines, self.img)
 
         pic_copy = self.img.copy()
