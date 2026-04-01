@@ -162,7 +162,6 @@ def transform_intersection(
         i.e. the space you are transforming FROM. This keeps `limit_to_img`
         correct in both directions.
     """
-    # Import here to avoid circular import
     from .lines import transform_line
     
     transformed_point = transform_point(intersection.point, original_x_start, original_y_start, to_global=to_global)
