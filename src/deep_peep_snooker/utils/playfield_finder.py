@@ -1,64 +1,19 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-from pydantic import BaseModel, ConfigDict
 
 from .const import GREEN_LOWER_BOUND, GREEN_UPPER_BOUND
 from .intersections import compute_intersections, Intersection
-from .func import (compute_adaptive_hsv_bounds, pipette_color, get_corners,
+from .func import (compute_adaptive_hsv_bounds, get_corners,
                    straighten_binary_mask, convert_hough_segments_to_lines,
-                   group_lines, select_lines, crop_image_by_points, sanitize_lines, crop_and_split,
+                   group_lines, select_lines, crop_image_by_points,
                    get_local_reference_line, filter_edges_by_reference_line, filter_lines_by_reference
                    )
 
 from .lines import Line, transform_line
 from .plotting import display_img
 from .points import Point
-
-
-class SnookerModel(BaseModel, arbitrary_types_allowed=True):
-    pass
-
-
-class PlayfieldLines(SnookerModel):
-    top: Line
-    bottom: Line
-    left: Line
-    right: Line
-
-    @classmethod
-    def from_lines(cls, top: Line, bottom: Line, side_lines: tuple[Line, Line]):
-        left = [line for line in side_lines if line.slope < 0][0]
-        right = [line for line in side_lines if line.slope > 0][0]
-        return cls(top=top, bottom=bottom, left=left, right=right)
-
-
-class PlayfiledPoints(SnookerModel):
-    top_left: Point
-    top_right: Point
-    bottom_right: Point
-    bottom_left: Point
-
-    @classmethod
-    def from_numpy(cls, lt: np.ndarray, lb:np.ndarray, rt:np.ndarray, rb:np.ndarray):
-        return cls(
-            top_left=Point.from_iterable(lt),
-            top_right=Point.from_iterable(rt),
-            bottom_right=Point.from_iterable(rb),
-            bottom_left=Point.from_iterable(lb),
-        )
-
-    def to_numpy(self) -> np.ndarray:
-        return np.array([
-            np.array(self.top_left),
-            np.array(self.top_right),
-            np.array(self.bottom_right),
-            np.array(self.bottom_left),
-        ])
-
-class Playfield(SnookerModel):
-    lines: PlayfieldLines
-    points: PlayfiledPoints
+from deep_peep_snooker.utils.schemas.playfield import PlayfieldLines
 
 
 class PlayfieldFinder:
@@ -80,18 +35,34 @@ class PlayfieldFinder:
             img: Image as a numpy array (height, width, channels)
         """
         self.img = img
-        self.preprocessed_img = None
-        self.straighted_mask = None
         self.external_edges_intersections = None
-        self.center = self._get_center_point()
-        self.vertical_axis = self._create_vertical_axis()
-        self.horizontal_axis = self._create_horizontal_axis()
-
-        self.lower_bound_l = None
-        self.upper_bound_l = None
+        self.external_bounds = PlayfieldLines()
 
         self._preprocess_image()
 
+    @staticmethod
+    def _assign_external_lines(lines: list[Line], slope_eps: float = 0.1) -> PlayfieldLines:
+        horizontal = [line for line in lines if line.slope is not None and abs(line.slope) <= slope_eps and line.intercept is not None]
+        side_lines = [line for line in lines if line.slope is not None and abs(line.slope) > slope_eps]
+
+        top = min(horizontal, key=lambda line: line.intercept) if horizontal else Line()
+        bottom = max(horizontal, key=lambda line: line.intercept) if horizontal else Line()
+        left = next((line for line in side_lines if line.slope < 0), Line())
+        right = next((line for line in side_lines if line.intercept is not None and line.intercept > 0), next((line for line in side_lines if line.slope > 0), Line()))
+
+        return PlayfieldLines(top = top, bottom = bottom, left = left, right = right)
+
+    @staticmethod
+    def _is_line_found(line: Line) -> bool:
+        return line.slope is not None or line.intercept is not None or line.xv is not None
+
+    def _validate_external_bounds(self) -> None:
+        missing_bounds = [
+            name for name, line in self.external_bounds.model_dump().items()
+            if not self._is_line_found(line)
+        ]
+        if missing_bounds:
+            raise ValueError(f"Playfield not found: missing external bounds {missing_bounds}")
 
     @staticmethod
     def intersection_to_points_array(intersections: list[Intersection]) -> np.ndarray[int]:
@@ -99,27 +70,9 @@ class PlayfieldFinder:
         return np.array([[int(inter.point.x), int(inter.point.y)] for inter in intersections])
 
 
-    def _get_center_point(self) -> Point:
-        """Get the center point of the image as a Point instance."""
-        height, width = self.img.height, self.img.width
-        center_x = width // 2
-        center_y = height // 2
-        return Point.from_xy(center_x, center_y)
-
-
-    def _create_vertical_axis(self) -> Line:
-        """Create a vertical line passing through the image center."""
-        return Line(xv=self.center.x)
-
-
-    def _create_horizontal_axis(self) -> Line:
-        """Create a horizontal line passing through the image center."""
-        return Line(slope=0, intercept=self.center.y)
-
-
     def _preprocess_image(
         self, 
-        kernel_size: int = 21,
+        kernel_size: int = 5,
         canny_thresh_lower: int = 150, 
         canny_thresh_upper: int = 200, 
         hough_thresh: int = 50, 
@@ -141,12 +94,17 @@ class PlayfieldFinder:
             maxLineGap=hough_max_line_gap
         )
         copy_edges = self.img.copy()
-        for segment in segments:
-            x1, y1, x2, y2 = segment[0]
-            cv2.line(copy_edges, (x1, y1), (x2, y2), (255, 0, 0), 5)
-        
+        if segments is not None:
+            for segment in segments:
+                x1, y1, x2, y2 = segment[0]
+                cv2.line(copy_edges, (x1, y1), (x2, y2), (255, 0, 0), 5)
+
         lines = convert_hough_segments_to_lines(segments)
         lines = select_lines(lines)
+        self.external_bounds = self._assign_external_lines(lines)
+
+        self._validate_external_bounds()
+        
         intersections = compute_intersections(lines, self.img)
 
         pic_copy = self.img.copy()
@@ -163,9 +121,7 @@ class PlayfieldFinder:
         # display_img(copy_edges)
         # display_img(pic_copy)
         # return binary_mask, binary_mask_close, straighted_binary_mask, edges, copy_edges, pic_copy
-
-        self.preprocessed_img = pic_copy
-        self.straighted_mask = straighted_binary_mask
+   
         self.external_edges_intersection_points = PlayfieldFinder.intersection_to_points_array(intersections)
         self.external_bound_lines = lines
 
@@ -181,8 +137,11 @@ class PlayfieldFinder:
         cropped_by_points = self.img[y_crop_start:y2, x_crop_start:x2]
 
         H = cropped_by_points.height
+        if H <= 0:
+            return self.external_bounds.top
+
         roi_y_start_local = 0
-        roi_y_end_local = int(0.1*H)
+        roi_y_end_local = max(1, int(0.1 * H))
 
         roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
     
@@ -235,19 +194,30 @@ class PlayfieldFinder:
         cropped_by_points, x_start, original_y_start = crop_image_by_points(self.img, self.external_edges_intersection_points)
 
         H = cropped_by_points.height
-        roi_y_start_local = int(0.95*H)
+        if H <= 0:
+            return self.external_bounds.bottom
+
+        roi_y_start_local = min(H - 1, int(0.95 * H))
         roi_y_end_local = H
-        
-        while True:
+
+        found_roi = False
+        while roi_y_start_local >= 0 and roi_y_end_local > roi_y_start_local:
             roi = cropped_by_points[roi_y_start_local:roi_y_end_local]
+            if roi.size == 0:
+                break
+
             hsv_roi = cv2.cvtColor(roi, cv2.COLOR_RGB2HSV)
             bin_roi = cv2.inRange(hsv_roi, GREEN_LOWER_BOUND, GREEN_UPPER_BOUND)
             white_ratio = cv2.countNonZero(bin_roi) / bin_roi.size
 
             if white_ratio > 0.5:
+                found_roi = True
                 break
             roi_y_start_local -= 1
             roi_y_end_local -= 1
+
+        if not found_roi:
+            return self.external_bounds.bottom
 
         _, _, v = cv2.split(hsv_roi)
 
@@ -270,9 +240,9 @@ class PlayfieldFinder:
                 
                 return bottom_line_global
             else:
-                return None
+                return self.external_bounds.bottom
         else:
-            return None
+            return self.external_bounds.bottom
 
 
     def find_internal_side_cushions(self) -> tuple[Line, Line] | None:
@@ -354,10 +324,10 @@ class PlayfieldFinder:
         try:    
             global_left_internal_side_cushion = transform_line(left_line, left_img, left_x_start, left_y_start)
         except Exception as e:
-            pass
+            global_left_internal_side_cushion = self.external_bounds.left
         try:
             global_right_internal_side_cushion = transform_line(right_line, right_img, right_x_start, right_y_start)
         except Exception as e:
-            pass
+            global_right_internal_side_cushion = self.external_bounds.right
 
         return global_left_internal_side_cushion, global_right_internal_side_cushion

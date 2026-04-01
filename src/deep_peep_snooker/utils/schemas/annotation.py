@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 
-from .common import Hashable
-from .const import BallColor
+from deep_peep_snooker.utils.common import Hashable
+from deep_peep_snooker.utils.const import BallColor
 
 
 class ImageMetaData(BaseModel):
@@ -25,12 +25,6 @@ class Ball(BaseModel):
 
 class ImageAnnotation(Hashable, BaseModel):
     image: ImageMetaData
-
-    def __hash__(self) -> int:
-        return Hashable.__hash__(self)
-
-    def __eq__(self, other: object) -> bool:
-        return Hashable.__eq__(self, other)
 
 
 class ImageBallAnnotation(ImageAnnotation):

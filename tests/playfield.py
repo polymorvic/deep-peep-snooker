@@ -1,10 +1,11 @@
 import tyro
+from tqdm import tqdm
 
-import src.config
-from src.utils.testing import (prepare_test_results_report, save_test_histogram, TestType, 
+import deep_peep_snooker.config
+from deep_peep_snooker.utils.testing import (prepare_test_results_report, save_test_histogram, TestType, 
                                build_output_dir, test_cushion, test_iou, prepare_single_metric_report)
 from pathlib import Path
-from src.utils.annotations import PlayfieldAnnotationCollection
+from deep_peep_snooker.utils.annotations import PlayfieldAnnotationCollection
 
 
 def run(
@@ -14,7 +15,7 @@ def run(
     parent_dir: str | Path = 'results'
     ) -> None:
     '''
-    uv run python -m tests.01_internal_bottom_cushion --pics-dir data/pics --poly_annotations-file-path data/playfield_gt.json --test-type BOTTOM
+    uv run python -m tests.playfield --pics-dir data/pics --poly_annotations-file-path data/playfield_gt.json --test-type BOTTOM
     '''
     proj_cwd = Path.cwd()
     pics_dir =  proj_cwd / pics_dir
@@ -26,7 +27,7 @@ def run(
 
     results = []
     not_found = []
-    for file in sorted(pics_dir.glob("*.png")):
+    for file in tqdm(sorted(pics_dir.glob("*.png"))):
         try:
             if test_type is TestType.IOU:
                 iou_result = test_iou(file, polygon_ann, test_out_dir)

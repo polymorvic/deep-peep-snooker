@@ -33,3 +33,11 @@ dev = [
     "pandas>=3.0.1",
     "tyro>=1.0.8",
 ]
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.sources]
+"src" = ""
