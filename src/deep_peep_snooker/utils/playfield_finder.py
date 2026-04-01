@@ -6,7 +6,7 @@ from .const import GREEN_LOWER_BOUND, GREEN_UPPER_BOUND
 from .intersections import compute_intersections, Intersection
 from .func import (compute_adaptive_hsv_bounds, get_corners,
                    straighten_binary_mask, convert_hough_segments_to_lines,
-                   group_lines, select_lines, crop_image_by_points, sanitize_lines, crop_and_split,
+                   group_lines, select_lines, crop_image_by_points,
                    get_local_reference_line, filter_edges_by_reference_line, filter_lines_by_reference
                    )
 
@@ -14,9 +14,6 @@ from .lines import Line, transform_line
 from .plotting import display_img
 from .points import Point
 from deep_peep_snooker.utils.schemas.playfield import PlayfieldLines
-
-
-
 
 
 class PlayfieldFinder:
@@ -38,8 +35,6 @@ class PlayfieldFinder:
             img: Image as a numpy array (height, width, channels)
         """
         self.img = img
-        self.preprocessed_img = None
-        self.straighted_mask = None
         self.external_edges_intersections = None
         self.external_bounds = PlayfieldLines()
 
@@ -67,7 +62,7 @@ class PlayfieldFinder:
             if not self._is_line_found(line)
         ]
         if missing_bounds:
-            raise ValueError(f"Playfield not found: missing external bounds {missing_bounds} for image {self.img}")
+            raise ValueError(f"Playfield not found: missing external bounds {missing_bounds}")
 
     @staticmethod
     def intersection_to_points_array(intersections: list[Intersection]) -> np.ndarray[int]:
@@ -127,8 +122,6 @@ class PlayfieldFinder:
         # display_img(pic_copy)
         # return binary_mask, binary_mask_close, straighted_binary_mask, edges, copy_edges, pic_copy
    
-        self.preprocessed_img = pic_copy
-        self.straighted_mask = straighted_binary_mask
         self.external_edges_intersection_points = PlayfieldFinder.intersection_to_points_array(intersections)
         self.external_bound_lines = lines
 
