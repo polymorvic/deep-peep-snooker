@@ -6,10 +6,10 @@ from pathlib import Path
 import numpy as np
 import cv2
 
-from src.utils.const import BallColor
-from src.utils.common import array_like, NumpyImage
-from src.utils.points import Point
-from src.utils.schemas import ImageMetaData, Ball, ImageAnnotation, ImageBallAnnotation, BBox, ImagePlayfieldAnnotation
+from deep_peep_snooker.utils.const import BallColor
+from deep_peep_snooker.utils.common import array_like, NumpyImage
+from deep_peep_snooker.utils.points import Point
+from deep_peep_snooker.utils.schemas.annotation import ImageMetaData, Ball, ImageAnnotation, ImageBallAnnotation, BBox, ImagePlayfieldAnnotation
 
 
 def transform_annotation(

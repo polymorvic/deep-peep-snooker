@@ -1,11 +1,11 @@
 import tyro
 from tqdm import tqdm
 
-import src.config
-from src.utils.testing import (prepare_test_results_report, save_test_histogram, TestType, 
+import deep_peep_snooker.config
+from deep_peep_snooker.utils.testing import (prepare_test_results_report, save_test_histogram, TestType, 
                                build_output_dir, test_cushion, test_iou, prepare_single_metric_report)
 from pathlib import Path
-from src.utils.annotations import PlayfieldAnnotationCollection
+from deep_peep_snooker.utils.annotations import PlayfieldAnnotationCollection
 
 
 def run(

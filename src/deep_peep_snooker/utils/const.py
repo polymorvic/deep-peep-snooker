@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from enum import StrEnum
 
-from src.utils.points import Point
+from deep_peep_snooker.utils.points import Point
 
 
 class BallColor(StrEnum):

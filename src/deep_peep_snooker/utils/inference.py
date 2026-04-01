@@ -2,7 +2,7 @@ from pathlib import Path
 import torch
 from torch import nn
 import torch.nn.functional as F
-from ops import compose_transform
+from deep_peep_snooker.ops import compose_transform
 from torchvision.io import read_image
 
 def run_shot_classification_inference(model: nn.Module, img_path: str | Path, device: str | None):

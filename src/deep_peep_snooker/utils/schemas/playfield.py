@@ -1,8 +1,8 @@
 import numpy as np
 from pydantic import BaseModel
 
-from utils.lines import Line
-from utils.points import Point
+from deep_peep_snooker.utils.lines import Line
+from deep_peep_snooker.utils.points import Point
 
 
 class SnookerModel(BaseModel, arbitrary_types_allowed=True):
