@@ -1,4 +1,5 @@
 import tyro
+from tqdm import tqdm
 
 import src.config
 from src.utils.testing import (prepare_test_results_report, save_test_histogram, TestType, 
@@ -26,7 +27,7 @@ def run(
 
     results = []
     not_found = []
-    for file in sorted(pics_dir.glob("*.png")):
+    for file in tqdm(sorted(pics_dir.glob("*.png"))):
         try:
             if test_type is TestType.IOU:
                 iou_result = test_iou(file, polygon_ann, test_out_dir)
