@@ -138,7 +138,7 @@ class PlayfieldFinder:
 
         H = cropped_by_points.height
         if H <= 0:
-            return self.external_bounds['top']
+            return self.external_bounds.top
 
         roi_y_start_local = 0
         roi_y_end_local = max(1, int(0.1 * H))
