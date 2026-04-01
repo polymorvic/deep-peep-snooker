@@ -13,7 +13,7 @@ from .func import (compute_adaptive_hsv_bounds, get_corners,
 from .lines import Line, transform_line
 from .plotting import display_img
 from .points import Point
-from deep_peep_snooker.utils.schemas.playfield import PlayfieldLines
+from deep_peep_snooker.utils.schemas.playfield import PlayfieldLines, PlayfieldPoints, Playfield
 
 
 class PlayfieldFinder:
@@ -331,3 +331,24 @@ class PlayfieldFinder:
             global_right_internal_side_cushion = self.external_bounds.right
 
         return global_left_internal_side_cushion, global_right_internal_side_cushion
+    
+
+    def detect_inner_playfield(self):
+        internal_bounds = PlayfieldLines()
+        internal_bounds.top = self.find_top_internal_cushion()
+        internal_bounds.bottom = self.find_bottom_internal_cushion()
+        internal_bounds.left, internal_bounds.right = self.find_internal_side_cushions()
+
+        internal_intersections = compute_intersections([line for line in internal_bounds.model_dump().values()], self.img)
+
+        internal_points = PlayfieldFinder.intersection_to_points_array(internal_intersections)
+        top_left, bottom_left, top_right, bottom_right = get_corners(internal_points)
+        playfield_points = PlayfieldPoints.from_numpy(
+            top_left,
+            bottom_left,
+            top_right,
+            bottom_right,
+        )
+
+        return Playfield(lines=internal_bounds, points=playfield_points)
+
