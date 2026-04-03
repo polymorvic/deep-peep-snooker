@@ -1,0 +1,25 @@
+train_matches:
+  - m_pic
+  - m01
+  - m02
+  - m03
+  - skip_m01
+  - skip_m02
+  - skip_m03
+  - skip_m04
+  - skip_m05
+  - skip_m06
+  - skip_m07
+
+val_matches:
+  - m04
+  - m05
+  - m06
+  - skip_m08
+  - skip_m09
+  - skip_m10
+
+test_matches: []
+
+
+
