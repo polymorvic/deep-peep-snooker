@@ -8,6 +8,7 @@ dependencies = [
     "opencv-python>=4.13.0.92",
     "pydantic>=2.12.5",
     "pydantic-settings>=2.13.1",
+    "pyyaml>=6.0.3",
     "scikit-learn>=1.8.0",
     "shapely>=2.1.2",
     "torch",
@@ -31,6 +32,7 @@ dev = [
     "odfpy>=1.4.1",
     "openpyxl>=3.1.5",
     "pandas>=3.0.1",
+    "ruff>=0.15.8",
     "tyro>=1.0.8",
 ]
 
