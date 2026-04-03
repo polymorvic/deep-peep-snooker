@@ -13,7 +13,7 @@ from .func import (compute_adaptive_hsv_bounds, get_corners,
 from .lines import Line, transform_line
 from .plotting import display_img
 from .points import Point
-from deep_peep_snooker.utils.schemas.playfield import PlayfieldLines, PlayfieldPoints, Playfield
+from deep_peep_snooker.schemas.playfield import PlayfieldLines, PlayfieldPoints, Playfield
 
 
 class PlayfieldFinder:
