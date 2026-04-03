@@ -2,7 +2,7 @@ from typing import TYPE_CHECKING, Self
 
 import numpy as np
 
-from .common import Hashable, array_like
+from .common import Hashable, ArrayLike
 from .points import transform_point
 
 if TYPE_CHECKING:
@@ -117,7 +117,7 @@ class Intersection(Hashable):
         return angle + 180
 
 
-def compute_intersections(lines: list['Line'], image: array_like) -> list[Intersection]:
+def compute_intersections(lines: list['Line'], image: ArrayLike) -> list[Intersection]:
     """
     Compute all intersection points between pairs of lines within image boundaries.
     

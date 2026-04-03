@@ -2,13 +2,13 @@ import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 
-from .common import array_like
+from .common import ArrayLike
 from .intersections import Intersection
 from .lines import Line
 from .points import Point
 
 
-def display_img(img: array_like) -> None:
+def display_img(img: ArrayLike) -> None:
     """
     Display an image using matplotlib.
     
@@ -28,7 +28,7 @@ def display_img(img: array_like) -> None:
 
 
 def plot_on_image(
-    img: array_like, 
+    img: ArrayLike, 
     intersections: list[Intersection] | None = None,
     lines: list[Line] | None = None, 
     points: list[Point] | None = None,
@@ -40,7 +40,7 @@ def plot_on_image(
     line_thickness: int = 2,
     point_radius: int = 3,
     polygon_thickness: int = 2
-    ) -> array_like:
+    ) -> ArrayLike:
     """
     Plot geometric objects (intersections, lines, points, polygons) on an image using OpenCV.
     
