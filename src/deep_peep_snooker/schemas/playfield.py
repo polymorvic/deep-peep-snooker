@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
 from pydantic import BaseModel
 
 from deep_peep_snooker.utils.lines import Line
@@ -49,3 +50,12 @@ class PlayfieldPoints(SnookerModel):
 class Playfield(SnookerModel):
     lines: PlayfieldLines
     points: PlayfieldPoints
+
+    def display_on_image(self, image: np.ndarray, frame_color: tuple[int, int, int] = (255, 0, 0)) -> np.ndarray:
+        img = np.asarray(image).copy()
+        arr = self.points.to_numpy().astype(np.int32)
+
+        if len(arr) >= 2:
+            cv2.polylines(img, [arr.reshape((-1, 1, 2))], True, frame_color, 2)
+
+        return img

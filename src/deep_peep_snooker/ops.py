@@ -1,5 +1,5 @@
 import torch
-import torchvision
+from torchvision.transforms import Compose, Resize, Normalize, ToPILImage
 
 from torch import nn
 
@@ -8,12 +8,13 @@ class MinMaxTransform(torch.nn.Module):
         return img.float().div(255.0)
     
 
-def compose_transform(*ops: nn.Module) -> torchvision.transforms.Compose:
+def compose_transform(*ops: nn.Module) -> Compose:
 
-    return torchvision.transforms.Compose([
-        torchvision.transforms.Resize((224, 224)),
+    return Compose([
+        ToPILImage(),
+        Resize((224, 224)),
         MinMaxTransform(),
-        torchvision.transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+        Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
         *ops
         ])
     

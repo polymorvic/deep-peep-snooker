@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Hashable as SupportsHash
 import numpy as np
 
-type array_like = np.ndarray | NumpyImage
+type ArrayLike = np.ndarray | NumpyImage
 
 class NumpyImage(np.ndarray):
     """

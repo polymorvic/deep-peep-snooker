@@ -7,13 +7,13 @@ import numpy as np
 import cv2
 
 from deep_peep_snooker.utils.const import BallColor
-from deep_peep_snooker.utils.common import array_like, NumpyImage
+from deep_peep_snooker.utils.common import ArrayLike, NumpyImage
 from deep_peep_snooker.utils.points import Point
-from deep_peep_snooker.utils.schemas.annotation import ImageMetaData, Ball, ImageAnnotation, ImageBallAnnotation, BBox, ImagePlayfieldAnnotation
+from deep_peep_snooker.schemas.annotation import ImageMetaData, Ball, ImageAnnotation, ImageBallAnnotation, BBox, ImagePlayfieldAnnotation
 
 
 def transform_annotation(
-    img: array_like, 
+    img: ArrayLike, 
     annotation: list[list[float]] | np.ndarray
     ) -> list[Point] | np.ndarray:
     """Converts percentage-based annotations to pixel coordinates."""
@@ -22,7 +22,7 @@ def transform_annotation(
 
 
 def transform_bbox(
-    img: array_like,
+    img: ArrayLike,
     bbox: dict[str, float] | list[float] | np.ndarray,
 ) -> dict[str, float] | np.ndarray:
     """Converts percentage-based bbox (x,y,w,h) to pixel coordinates."""
@@ -73,7 +73,7 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
 
     @staticmethod
     @abstractmethod
-    def display_on_image(annotation: AT, image: array_like) -> array_like:
+    def display_on_image(annotation: AT, image: ArrayLike) -> ArrayLike:
         raise NotImplemented
 
 
@@ -261,7 +261,7 @@ class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
 
 
     @staticmethod
-    def display_on_image(annotation: ImageBallAnnotation, image: array_like, frame_color: tuple[int] = (255, 0, 0)) -> array_like:
+    def display_on_image(annotation: ImageBallAnnotation, image: ArrayLike, frame_color: tuple[int] = (255, 0, 0)) -> ArrayLike:
         img = np.asarray(image).copy()
         nim = NumpyImage(img)
 
@@ -347,7 +347,7 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
     
 
     @staticmethod
-    def display_on_image(annotation: ImagePlayfieldAnnotation, image: array_like, frame_color: tuple[int] = (255, 0, 0)) -> array_like:
+    def display_on_image(annotation: ImagePlayfieldAnnotation, image: ArrayLike, frame_color: tuple[int] = (255, 0, 0)) -> ArrayLike:
         img = np.asarray(image).copy()
         nim = NumpyImage(img)
 

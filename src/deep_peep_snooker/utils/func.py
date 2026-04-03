@@ -3,7 +3,7 @@ import numpy as np
 from pathlib import Path
 from typing import Literal, Iterable
 
-from .common import array_like, NumpyImage
+from .common import ArrayLike, NumpyImage
 from .lines import Line, LineGroup, transform_line
 from .intersections import Intersection, compute_intersections
 from .points import Point

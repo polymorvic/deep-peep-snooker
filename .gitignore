@@ -5,6 +5,7 @@ build/
 dist/
 wheels/
 *.egg-info
+.ruff*
 
 
 # Virtual environments
@@ -30,6 +31,7 @@ _old/
 *.pdf
 *.txt
 *webm
+*.mp4
 
 .DS_Store
 .ipynb_checkpoints
