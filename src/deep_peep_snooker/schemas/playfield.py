@@ -1,13 +1,9 @@
 import numpy as np
 import cv2
-from pydantic import BaseModel
 
 from deep_peep_snooker.utils.lines import Line
 from deep_peep_snooker.utils.points import Point
-
-
-class SnookerModel(BaseModel, arbitrary_types_allowed=True):
-    pass
+from deep_peep_snooker.schemas.base import SnookerModel
 
 
 class PlayfieldLines(SnookerModel):
