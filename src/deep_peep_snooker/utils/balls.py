@@ -40,8 +40,9 @@ class BallDetector:
         return img_hsv
 
     def get_balls(self, color: BallColor):
-        lower_bound = BALLS[color]['lower_bound']
-        upper_bound = BALLS[color]['upper_bound']
+        hsv_range = BALLS.range_for(color)
+        lower_bound = hsv_range.lower_bound
+        upper_bound = hsv_range.upper_bound
 
         
 
