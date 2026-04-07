@@ -5,6 +5,7 @@ from deep_peep_snooker.utils.common import ArrayLike, NumpyImage
 from deep_peep_snooker.schemas.ball import BallColor
 from deep_peep_snooker.schemas.playfield import Playfield
 from deep_peep_snooker.utils.const import BALLS
+from deep_peep_snooker.utils.plotting import display_img
 
 
 
@@ -44,38 +45,67 @@ class BallFinder:
         return cv2.cvtColor(self.cropped_img_hsv, cv2.COLOR_HSV2RGB)
     
 
-    def find_blue(self):
+    @staticmethod
+    def roi_rect_to_img_rect(rect, roi_origin):
+        x, y, w, h = rect
+        roi_x, roi_y = roi_origin
+        return x + roi_x, y + roi_y, w, h
+    
 
+    def find_blue(self, 
+                  roi_width_delta: float = 0.25, 
+                  roi_height_low_delta: float = 0.25,
+                  roi_height_up_delta: int | float = 2):
         r = BALLS.range_for(BallColor.BLUE)
         bin_img = cv2.inRange(self.cropped_img_hsv, r.lower_bound, r.upper_bound)
 
-        cnt, _ = cv2.findContours(bin_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours, _ = cv2.findContours(bin_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-        if cnt is None:
+        if not contours:
             return
 
-        cnt = cnt[0]
+        cnt = contours[0]
         x, y, w, h = cv2.boundingRect(cnt)
 
-        h_up = 2*h
-        h_low = int(h * 0.25)
+        h_up = roi_height_up_delta * h
+        h_low = int(h * roi_height_low_delta)
 
-        roi_hsv = self.cropped_img_hsv[
-            y - h_low: y + h_up + 1,
-            x: x+ w + 1
-        ]
+        w_delta = int(w * roi_width_delta)  
 
-        med = cv2.medianBlur(roi_hsv[..., 0], 7)
+        img_h, img_w = self.cropped_img_hsv.shape[:2]
+
+        roi_x1 = max(0, x - w_delta)
+        roi_y1 = max(0, y - h_low)
+
+        roi_x2 = min(img_w, x + w + w_delta)
+        roi_y2 = min(img_h, y + h_up)
+
+        roi_hsv = self.cropped_img_hsv[roi_y1:roi_y2, roi_x1:roi_x2]
+
+        roi_h, _, _ = cv2.split(roi_hsv)
+
+        med = cv2.medianBlur(roi_h, 7)
         _, th = cv2.threshold(med, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
+        display_img(roi_h)
+        display_img(th)
 
-        cnt, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        contours, _ = cv2.findContours(th, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
 
-        if cnt is None:
+        if not contours:
             return
 
-        cnt = cnt[0]
-        x, y, w, h = cv2.boundingRect(cnt)
+        cnt = contours[0]
+        rect_roi = cv2.boundingRect(cnt)
+        rect_img = self.roi_rect_to_img_rect(rect_roi, (roi_x1, roi_y1))
+
+        crop_x, crop_y = self.crop_origin_xy
+
+        x, y, w, h = rect_img
+        x += crop_x
+        y += crop_y
+
+        return x, y, w, h
 
 
 
