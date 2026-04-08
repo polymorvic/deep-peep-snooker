@@ -206,6 +206,8 @@ def crop_image_by_points(
     Raises:
         ValueError: If points array is empty or has invalid shape
     """
+    img = NumpyImage(img)
+    
     min_x = int(np.min(points[:, 0]))
     max_x = int(np.max(points[:, 0]))
     min_y = int(np.min(points[:, 1]))
