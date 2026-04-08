@@ -14,6 +14,8 @@ from .lines import Line, transform_line
 from .plotting import display_img
 from .points import Point
 from deep_peep_snooker.schemas.playfield import PlayfieldLines, PlayfieldPoints, Playfield
+from deep_peep_snooker.utils.helpers import get_debug_mode
+
 
 
 class PlayfieldFinder:
@@ -107,20 +109,23 @@ class PlayfieldFinder:
         
         intersections = compute_intersections(lines, self.img)
 
-        pic_copy = self.img.copy()
-        for intersection, line in zip(intersections, lines):
-            pt = intersection.point.as_int()
-            end_pts = line.limit_to_img(pic_copy)
-            cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
-            cv2.circle(pic_copy, pt, 2,(0, 0, 255), 2)
+        if get_debug_mode():
 
-        # display_img(binary_mask)
-        # display_img(binary_mask_close)
-        # display_img(straighted_binary_mask)
-        # display_img(edges)
-        # display_img(copy_edges)
-        # display_img(pic_copy)
-        # return binary_mask, binary_mask_close, straighted_binary_mask, edges, copy_edges, pic_copy
+            pic_copy = self.img.copy()
+            for intersection, line in zip(intersections, lines):
+                pt = intersection.point.as_int()
+                end_pts = line.limit_to_img(pic_copy)
+                cv2.line(pic_copy, *end_pts, (255, 0, 0), 2)
+                cv2.circle(pic_copy, pt, 2,(0, 0, 255), 2)
+
+        
+            display_img(binary_mask)
+            display_img(binary_mask_close)
+            display_img(straighted_binary_mask)
+            display_img(edges)
+            display_img(copy_edges)
+            display_img(pic_copy)
+            # return binary_mask, binary_mask_close, straighted_binary_mask, edges, copy_edges, pic_copy
    
         self.external_edges_intersection_points = PlayfieldFinder.intersection_to_points_array(intersections)
         self.external_bound_lines = lines
@@ -252,8 +257,9 @@ class PlayfieldFinder:
         left_img = self.img[top_left[1]:bottom_left[1], bottom_left[0]:img_center_w]
         right_img = self.img[top_right[1]:bottom_right[1], img_center_w:bottom_right[0]]
 
-        # display_img(left_img)
-        # display_img(right_img)
+        if get_debug_mode():
+            display_img(left_img)
+            display_img(right_img)
 
         gray_left_img = cv2.cvtColor(left_img, cv2.COLOR_RGB2GRAY)
         gray_right_img = cv2.cvtColor(right_img, cv2.COLOR_RGB2GRAY)
@@ -270,29 +276,31 @@ class PlayfieldFinder:
         edges_left_img = cv2.Canny(gray_left_img, 25, 75)
         edges_right_img = cv2.Canny(gray_right_img, 25, 75)
 
-
-        # display_img(edges_left_img)
-        # display_img(edges_right_img)
+        if get_debug_mode():
+            display_img(edges_left_img)
+            display_img(edges_right_img)
 
 
         edges_left_img = filter_edges_by_reference_line(edges_left_img, local_left_ref_line, "left", margin=12)
         edges_right_img = filter_edges_by_reference_line(edges_right_img, local_right_ref_line, "right", margin=12)
 
-        # display_img(edges_left_img)
-        # display_img(edges_right_img)
+        if get_debug_mode():
+            display_img(edges_left_img)
+            display_img(edges_right_img)
 
         segments_left_img = cv2.HoughLinesP(edges_left_img, 1, np.pi / 180, threshold=80, minLineLength=50, maxLineGap=25)
         segments_right_img = cv2.HoughLinesP(edges_right_img, 1, np.pi / 180, threshold=80, minLineLength=50, maxLineGap=25)
 
-        # for segment in segments_left_img:
-        #     x1, y1, x2, y2 = segment[0]
-        #     cv2.line(left_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
-        # for segment in segments_right_img:
-        #     x1, y1, x2, y2 = segment[0]
-        #     cv2.line(right_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
+        if get_debug_mode():
+            for segment in segments_left_img:
+                x1, y1, x2, y2 = segment[0]
+                cv2.line(left_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
+            for segment in segments_right_img:
+                x1, y1, x2, y2 = segment[0]
+                cv2.line(right_img, (x1, y1), (x2, y2), (0, 0, 255), 1)
 
-        # display_img(left_img)
-        # display_img(right_img)
+            display_img(left_img)
+            display_img(right_img)
 
         left_lines = convert_hough_segments_to_lines(segments_left_img)
         right_lines = convert_hough_segments_to_lines(segments_right_img)
@@ -300,24 +308,25 @@ class PlayfieldFinder:
         left_line = filter_lines_by_reference(left_lines, local_left_ref_line)
         right_line = filter_lines_by_reference(right_lines, local_right_ref_line)
 
-        # print('linie referencyjne loklane')
-        # print('left', local_left_ref_line)
-        # print('right', local_right_ref_line)
-        # print('--------------------------------')
-        # print('znalezione linie:')
-        # print('left', left_lines)
-        # print('right', right_lines)
+        if get_debug_mode():
+            print('linie referencyjne loklane')
+            print('left', local_left_ref_line)
+            print('right', local_right_ref_line)
+            print('--------------------------------')
+            print('znalezione linie:')
+            print('left', left_lines)
+            print('right', right_lines)
 
-        # print('filtered lines:')
-        # print(left_line)
-        # print(right_line)
-        # print('--------------------------------')
+            print('filtered lines:')
+            print(left_line)
+            print(right_line)
+            print('--------------------------------')
 
-        # cv2.line(left_img, *left_line.limit_to_img(left_img), (0, 0, 255), 1)
-        # cv2.line(right_img, *right_line.limit_to_img(right_img), (0, 0, 255), 1)
+            cv2.line(left_img, *left_line.limit_to_img(left_img), (0, 0, 255), 1)
+            cv2.line(right_img, *right_line.limit_to_img(right_img), (0, 0, 255), 1)
 
-        # display_img(left_img)
-        # display_img(right_img)
+            display_img(left_img)
+            display_img(right_img)
 
         global_left_internal_side_cushion, global_right_internal_side_cushion = None, None
 

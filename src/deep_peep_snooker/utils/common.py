@@ -2,7 +2,12 @@ from abc import ABC, abstractmethod
 from collections.abc import Hashable as SupportsHash
 import numpy as np
 
+
 type ArrayLike = np.ndarray | NumpyImage
+
+
+type Rectangle = tuple[int, int, int, int]
+
 
 class NumpyImage(np.ndarray):
     """

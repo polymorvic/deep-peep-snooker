@@ -1,19 +1,6 @@
-import cv2
 import numpy as np
-from enum import StrEnum
 
-from deep_peep_snooker.utils.points import Point
-
-
-class BallColor(StrEnum):
-    BLUE = 'blue'
-    YELLOW = 'yellow'
-    GREEN = 'green'
-    BROWN = 'brown'
-    PINK = 'pink'
-    RED = 'red'
-    CUE = 'cue'
-    BLACK = 'black'
+from deep_peep_snooker.schemas.ball import BallHSVRange, BallsConfig, BallColor, BallRanges
 
 
 GREEN_LOWER_BOUND = np.array([25, 40, 40])
@@ -22,133 +9,41 @@ GREEN_LOWER_BOUND = np.array([25, 40, 40])
 GREEN_UPPER_BOUND = np.array([95, 255, 255])
 
 
-BALLS = {
-    'radius_mm': 52.5,
+BALLS = BallsConfig(
+    radius_mm=52.5,
+    ranges=BallRanges(
+        blue=BallHSVRange(
+            lower_bound=np.array([100, 100, 100]),
+            upper_bound=np.array([140, 255, 255]),
+        ),
+        yellow=BallHSVRange(
+            lower_bound=np.array([20, 100, 100]),
+            upper_bound=np.array([30, 255, 255]),
+        ),
+        green=BallHSVRange(
+            lower_bound=np.array([30, 100, 100]),
+            upper_bound=np.array([70, 255, 255]),
+        ),
+        brown=BallHSVRange(
+            lower_bound=np.array([10, 100, 100]),
+            upper_bound=np.array([20, 255, 255]),
+        ),
+        black=BallHSVRange(
+            lower_bound=np.array([0, 100, 100]),
+            upper_bound=np.array([10, 255, 255]),
+        ),
+        cue=BallHSVRange(
+            lower_bound=np.array([0, 100, 100]),
+            upper_bound=np.array([10, 255, 255]),
+        ),
+        red=BallHSVRange(
+            lower_bound=np.array([0, 100, 100]),
+            upper_bound=np.array([10, 255, 255]),
+        ),
+        pink=BallHSVRange(
+            lower_bound=np.array([150, 100, 100]),
+            upper_bound=np.array([170, 255, 255]),
+        ),
+    ),
+)
 
-    BallColor.BLUE: {
-        'lower_bound': np.array([100, 100, 100]),
-        'upper_bound': np.array([140, 255, 255])
-    },
-    BallColor.YELLOW: {
-        'lower_bound': np.array([20, 100, 100]),
-        'upper_bound': np.array([30, 255, 255])
-    },
-    BallColor.GREEN: {
-        'lower_bound': np.array([30, 100, 100]),
-        'upper_bound': np.array([70, 255, 255])
-    },
-    BallColor.BROWN: {
-        'lower_bound': np.array([10, 100, 100]),
-        'upper_bound': np.array([20, 255, 255])
-    },
-    BallColor.BLACK: {
-        'lower_bound': np.array([0, 100, 100]),
-        'upper_bound': np.array([10, 255, 255])
-    },
-    BallColor.CUE: {
-        'lower_bound': np.array([0, 100, 100]),
-        'upper_bound': np.array([10, 255, 255])
-    },
-    BallColor.RED: {
-        'lower_bound': np.array([0, 100, 100]),
-        'upper_bound': np.array([10, 255, 255])
-    },
-    BallColor.PINK: {
-        'lower_bound': np.array([150, 100, 100]),
-        'upper_bound': np.array([170, 255, 255])
-    }
-}
-
-
-SNOOKER_TABLE = {
-    'playfield': {
-        'length_mm': 3125, # 3569
-        'width_mm': 1778
-    },
-    'baulk_line': {
-        'dist_from_closer_cushion_mm': 736.6,
-        'D_radius_mm': 292.1,
-    },
-    'ball': {
-        'radius_mm': 52.5,
-        'weight_g': 142
-    },
-    'pockets': {
-        "corner_pockets": {
-            "mouth_width_mm": 89,
-            "radius_mm": 47.6,
-            "entry_angle_deg": [142, 145]
-        },
-    "middle_pockets": {
-        "mouth_width_mm": 83,
-        "radius_mm": 47.6,
-        "entry_angle_deg": [100, 104]
-        }
-    }
-}
-
-
-def ref_snooker_playfield(
-    extra_length: int = 2_000, 
-    extra_width: int = 1_000, 
-    line_thickness: int = 250
-    ) -> tuple[np.ndarray, dict[str, Point]]:
-    """
-    Generate a reference snooker playfield image with key points.
-    
-    Args:
-        extra_length: Additional pixels added to length (default: 2000)
-        extra_width: Additional pixels added to width (default: 1000)
-        line_thickness: Thickness of drawn lines in pixels (default: 250)
-        
-    Returns:
-        Tuple containing the playfield image and dictionary of key points as Point objects
-    """
-    pf = SNOOKER_TABLE['playfield']
-    baulk = SNOOKER_TABLE['baulk_line']
-
-    length = int(pf['length_mm'] * 10)
-    width = int(pf['width_mm'] * 10)
-    baulk_line = int(baulk['dist_from_closer_cushion_mm'] * 10)
-    baulk_radius = int(baulk['D_radius_mm'] * 10)
-
-    img = np.zeros((length + extra_length, width + extra_width, 3), np.uint8)
-
-    corners = {
-        "top_left": (0, 0),
-        "top_right": (width, 0),
-        "bottom_left": (0, length),
-        "bottom_right": (width, length)
-    }
-
-    lines = [
-        (corners["top_left"], corners["top_right"]),
-        (corners["top_left"], corners["bottom_left"]),
-        (corners["top_right"], corners["bottom_right"]),
-        (corners["bottom_left"], corners["bottom_right"]),
-    ]
-
-    for start, end in lines:
-        cv2.line(img, start, end, (0, 255, 0), line_thickness)
-
-    baulk_left, baulk_right = (0, baulk_line), (width, baulk_line)
-    cv2.line(img, baulk_left, baulk_right, (0, 255, 0), line_thickness)
-
-    baulk_center = (width // 2, baulk_line)
-    cv2.ellipse(img, baulk_center, (baulk_radius, baulk_radius),
-                0, 180, 360, (0, 255, 0), line_thickness)
-
-    ref_points = {
-        "top_left": Point.from_xy(0, 0),
-        "top_right": Point.from_xy(width, 0),
-        "bottom_left": Point.from_xy(0, length),
-        "bottom_right": Point.from_xy(width, length),
-        "center": Point.from_xy(width // 2, length // 2),
-        "baulk_left": Point.from_xy(0, baulk_line),
-        "baulk_right": Point.from_xy(width, baulk_line),
-        "baulk_center": Point.from_xy(width // 2, baulk_line),
-        "baulk_arc_left": Point.from_xy(width // 2 - baulk_radius, baulk_line),
-        "baulk_arc_right": Point.from_xy(width // 2 + baulk_radius, baulk_line),
-    }
-
-    return img, ref_points
