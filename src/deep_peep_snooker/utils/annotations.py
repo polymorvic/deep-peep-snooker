@@ -297,7 +297,7 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
                     ),
                     points=result['value']['points'],
                 )
-                cleaned_annotations[self._build_image_name(item)] = annotation_data
+                cleaned_annotations[annotation_data.image.name] = annotation_data
 
         return cleaned_annotations
     
