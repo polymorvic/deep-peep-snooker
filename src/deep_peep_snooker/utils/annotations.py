@@ -45,7 +45,7 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
     def __init__(self, 
                  root_dir: Path | str, 
                  raw_annotations: _RawAnnotations | None = None,
-                 cleaned_annotations: list[AT] | None = None
+                 cleaned_annotations: dict[str, AT] | None = None
                 ) -> None:
         self._root_dir: Path = Path(root_dir)
         self._raw_annotations = raw_annotations
@@ -67,7 +67,7 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
         with file_path.open(encoding="utf-8") as f:
             raw_cleaned = json.load(f)
 
-        cleaned = [cls.annotation_model.model_validate(item) for item in raw_cleaned]
+        cleaned = {item['image']['name']: cls.annotation_model.model_validate(item) for item in raw_cleaned}
         return cls(file_path.parent, [], cleaned)
 
 
@@ -78,7 +78,7 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
 
 
     @abstractmethod
-    def _clean_annotations(self) -> list[AT]:
+    def _clean_annotations(self) -> dict[str, AT]:
         raise NotImplemented
     
 
@@ -97,14 +97,15 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
             raise ValueError('Clean annotations not set')
         
         duplicates = set()
-        for i in range(len(self.cleaned_annotations)):
-            for j in range(len(self.cleaned_annotations)):
+        cleaned_annotations = list(self.cleaned_annotations.values())
+        for i in range(len(cleaned_annotations)):
+            for j in range(len(cleaned_annotations)):
 
                 if i == j:
                     continue
 
-                if self.cleaned_annotations[i] == self.cleaned_annotations[j]:
-                    duplicates.add(self.cleaned_annotations[j])
+                if cleaned_annotations[i] == cleaned_annotations[j]:
+                    duplicates.add(cleaned_annotations[j])
 
         if not duplicates:
             print('Nie ma duplikatow')
@@ -119,17 +120,12 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
         if self.cleaned_annotations is None:
             raise ValueError('Clean annotations not set')
 
-        unique_items: list[AT] = []
-        seen: set[AT] = set()
-
-        for item in self.cleaned_annotations:
-            if item in seen:
-                continue
-            seen.add(item)
-            unique_items.append(item)
+        unique_items: dict[str, AT] = {}
+        for img_name, item in self.cleaned_annotations.items():
+            unique_items[img_name] = item
 
         removed_count = len(self.cleaned_annotations) - len(unique_items)
-        self.cleaned_annotations[:] = unique_items
+        self.cleaned_annotations = unique_items
         print(f'Usunięto {removed_count} duplikatów')
 
 
@@ -151,9 +147,7 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
 
 
     def filter_by_image(self, image_name: str) -> AT:
-        for ann in self.cleaned_annotations:
-            if ann.image.name == image_name:
-                return ann
+        return self.cleaned_annotations[image_name]
             
 
     def save(self, file_path: Path | str) -> None:
@@ -163,7 +157,7 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
 
         file_path = Path(file_path)
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        data_to_save = [item.model_dump() for item in self.cleaned_annotations]
+        data_to_save = [item.model_dump() for item in self.cleaned_annotations.values()]
 
         with open(file_path, 'w') as f:
             json.dump(data_to_save, f, indent=4)
@@ -233,13 +227,13 @@ class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
         )
 
 
-    def _clean_annotations(self) -> list[ImageBallAnnotation]:
-        return [self._convert_item(data['filename'], item) for data in self._raw_annotations for item in data['data']]
+    def _clean_annotations(self) -> dict[str, ImageBallAnnotation]:
+        return {self._build_image_name(item): self._convert_item(data['filename'], item) for data in self._raw_annotations for item in data['data']}
     
 
     def _validate(self) -> None:
         are_all_good = True
-        for item in self.cleaned_annotations:
+        for item in self.cleaned_annotations.values():
             for ball in item.balls:
 
                 ball_count = len(ball.bboxes)
@@ -275,14 +269,18 @@ class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
                 cv2.rectangle(img, (x1, y1), (x2, y2), frame_color, 2)
 
         return img
+    
+
+    def get_bboxes_by_color(self, image_name: str, color: BallColor) -> list[BBox]:
+        self.filter_by_image(image_name)
 
 
 class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotation]):
     annotation_model = ImagePlayfieldAnnotation
 
 
-    def _clean_annotations(self):
-        cleaned_annotations = []
+    def _clean_annotations(self) -> dict[str, ImagePlayfieldAnnotation]:
+        cleaned_annotations = {}
 
         for item in self._raw_annotations:
             ann_data = item['data']
@@ -299,7 +297,7 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
                     ),
                     points=result['value']['points'],
                 )
-                cleaned_annotations.append(annotation_data)
+                cleaned_annotations[self._build_image_name(item)] = annotation_data
 
         return cleaned_annotations
     
@@ -307,7 +305,7 @@ class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotatio
     def _validate(self) -> None:
         are_all_good = True
 
-        for item in self.cleaned_annotations:
+        for item in self.cleaned_annotations.values():
             pts = item.points
             is_invalid = False
 
