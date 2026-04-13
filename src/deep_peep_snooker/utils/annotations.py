@@ -151,7 +151,7 @@ class AnnotationCollection[AT: ImageAnnotation](ABC):
 
 
     def filter_by_image(self, image_name: str) -> AT:
-        return self.cleaned_annotations[image_name]
+        return self.cleaned_annotations.get(image_name)
             
 
     def save(self, file_path: Path | str) -> None:
