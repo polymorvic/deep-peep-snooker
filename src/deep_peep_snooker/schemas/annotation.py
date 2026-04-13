@@ -1,3 +1,6 @@
+import numpy as np
+import torch
+
 from pydantic import BaseModel
 
 from deep_peep_snooker.utils.common import Hashable
@@ -16,6 +19,16 @@ class BBox(BaseModel):
     y: float
     width: float
     height: float
+
+
+    @property
+    def to_numpy(self) -> np.ndarray:
+        return np.array([self.x, self.y, self.width, self.height])
+    
+
+    @property
+    def to_tensor(self):
+        return torch.tensor([self.x, self.y, self.width, self.height])
 
 
 class Ball(BaseModel):
