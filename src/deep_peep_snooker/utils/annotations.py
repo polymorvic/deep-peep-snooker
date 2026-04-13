@@ -25,7 +25,8 @@ def transform_bbox(
     img: ArrayLike,
     bbox: dict[str, float] | list[float] | np.ndarray,
 ) -> dict[str, float] | np.ndarray:
-    """Converts percentage-based bbox (x,y,w,h) to pixel coordinates."""
+    """Converts percentage-based bbox (x,y,w,h) to pixel coordinates.
+    For ``np.ndarray``, expects a 1D array of shape ``(4,)`` (``(1,4)`` is flattened)."""
     if isinstance(bbox, dict):
         sx, sy = img.width / 100, img.height / 100
         return {
@@ -34,8 +35,11 @@ def transform_bbox(
             "width": float(bbox["width"] * sx),
             "height": float(bbox["height"] * sy),
         }
-    arr = np.asarray(bbox, dtype=np.float32) * np.array([img.width, img.height, img.width, img.height], dtype=np.float32) / 100
-    return arr
+    a = np.asarray(bbox, dtype=np.float32).ravel()
+    if a.size != 4:
+        raise ValueError("bbox as array must be 1D with 4 values [x, y, w, h]")
+    scale = np.array([img.width, img.height, img.width, img.height], dtype=np.float32) / 100
+    return (a * scale).astype(np.int64)
 
 
 _RawAnnotations = list[dict[Literal['filename', 'data'], str | list]]
@@ -271,8 +275,19 @@ class BallAnnotationCollection(AnnotationCollection[ImageBallAnnotation]):
         return img
     
 
-    def get_bboxes_by_color(self, image_name: str, color: BallColor) -> list[BBox]:
-        self.filter_by_image(image_name)
+    def get_bboxes_by_color(self, image_name: str, color: BallColor) -> list[BBox] | None:
+        if color not in BallColor:
+            raise ValueError(f"Color {color} not in {', '.join([c for c in BallColor])}")
+
+        ball_annotation = self.filter_by_image(image_name)
+        if not ball_annotation:
+            raise ValueError(f'No such picture {image_name} in annotations')
+        
+        image_balls = ball_annotation.balls
+        for ball in image_balls:
+            if ball.color == color:
+                return ball.bboxes
+
 
 
 class PlayfieldAnnotationCollection(AnnotationCollection[ImagePlayfieldAnnotation]):
