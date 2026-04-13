@@ -2,7 +2,7 @@ import tyro
 from tqdm import tqdm
 
 import deep_peep_snooker.config
-from deep_peep_snooker.utils.testing import (prepare_test_results_report, save_test_histogram, TestType, 
+from deep_peep_snooker.utils.testing import (prepare_test_results_report, save_test_histogram, PlayfieldTestType, 
                                build_output_dir, test_cushion, test_iou, prepare_single_metric_report)
 from pathlib import Path
 from deep_peep_snooker.utils.annotations import PlayfieldAnnotationCollection
@@ -11,7 +11,7 @@ from deep_peep_snooker.utils.annotations import PlayfieldAnnotationCollection
 def run(
     pics_dir: str | Path,
     annotation_file_path: str | Path,
-    test_type: TestType,
+    test_type: PlayfieldTestType,
     output_dir: str | Path = 'results/playfield'
     ) -> None:
     '''
@@ -29,7 +29,7 @@ def run(
     not_found = []
     for file in tqdm(sorted(pics_dir.glob("*.png"))):
         try:
-            if test_type is TestType.IOU:
+            if test_type is PlayfieldTestType.IOU:
                 iou_result = test_iou(file, annotations, output_dir)
                 results.append({"pic_name": file.name, "iou": iou_result})
                 
@@ -46,7 +46,7 @@ def run(
         except Exception as e:
             print(f"Error processing {file}: {e}")
             not_found.append(file.stem)
-            if test_type is TestType.IOU:
+            if test_type is PlayfieldTestType.IOU:
                 results.append({"pic_name": file.name, "iou": None})
             else:
                 results.append(
@@ -58,7 +58,7 @@ def run(
                     }
                 )
 
-    if test_type is TestType.IOU:
+    if test_type is PlayfieldTestType.IOU:
         res_df = prepare_single_metric_report(
             output_dir, results, output_filename, "iou", not_found
         )
