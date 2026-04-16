@@ -3,6 +3,7 @@ import numpy as np
 
 from deep_peep_snooker.utils.common import ArrayLike, NumpyImage
 from deep_peep_snooker.schemas.ball import BallColor
+from deep_peep_snooker.schemas.annotation import BBox
 from deep_peep_snooker.schemas.playfield import Playfield
 from deep_peep_snooker.utils.const import BALLS
 from deep_peep_snooker.utils.plotting import display_img
@@ -81,8 +82,9 @@ class BallFinder:
             return
 
         rect_img = roi_rect_to_img_rect(rect_roi, (roi_x1, roi_y1))
+        x, y, w, h = roi_rect_to_img_rect(rect_img, self.crop_origin_xy)
 
-        return roi_rect_to_img_rect(rect_img, self.crop_origin_xy)
+        return BBox(x=x, y=y, width=w, height=h)
 
 
 

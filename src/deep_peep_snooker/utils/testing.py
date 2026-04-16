@@ -17,6 +17,8 @@ from .metrics import iou
 from .playfield_finder import PlayfieldFinder
 from .plotting import plot_on_image
 
+from deep_peep_snooker.schemas.ball import BallColor
+
 
 TestType = Literal["bottom", "top", "left", "right", "iou"]
 
@@ -120,7 +122,7 @@ def save_test_histogram(
     plt.close()
 
 
-class TestType(StrEnum):
+class PlayfieldTestType(StrEnum):
     BOTTOM = "bottom"
     TOP = "top"
     LEFT = "left"
@@ -129,7 +131,7 @@ class TestType(StrEnum):
 
     @property
     def subdir(self) -> str:
-        if self is TestType.IOU:
+        if self is PlayfieldTestType.IOU:
             return "iou"
         return f"internal-{self.value}-cushion"
     
@@ -143,7 +145,34 @@ class TestType(StrEnum):
         return None
 
 
-def build_output_dir(parent_dir: str | Path, test_type: TestType) -> Path:
+class BallTestType(StrEnum):
+    ALL = "all"
+    BLUE = BallColor.BLUE.value
+    YELLOW = BallColor.YELLOW.value
+    GREEN = BallColor.GREEN.value
+    BROWN = BallColor.BROWN.value
+    PINK = BallColor.PINK.value
+    RED = BallColor.RED.value
+    CUE = BallColor.CUE.value
+    BLACK = BallColor.BLACK.value
+
+    @property
+    def subdir(self) -> str:
+        if self is BallTestType.ALL:
+            return "balls-all"
+        return f"ball-{self.value}"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            value = value.lower()
+            for member in cls:
+                if member.value == value:
+                    return member
+        return None
+
+
+def build_output_dir(parent_dir: str | Path, test_type: TestType | BallTestType) -> Path:
     ts = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     out_dir = Path(parent_dir) / test_type.subdir / ts
     out_dir.mkdir(parents=True, exist_ok=True)

@@ -1,7 +1,11 @@
+import numpy as np
+import torch
+
 from pydantic import BaseModel
 
-from deep_peep_snooker.utils.common import Hashable
+from deep_peep_snooker.utils.common import Hashable, ArrayLike
 from deep_peep_snooker.utils.const import BallColor
+from deep_peep_snooker.utils.annotations import transform_bbox
 
 
 class ImageMetaData(BaseModel):
@@ -16,6 +20,31 @@ class BBox(BaseModel):
     y: float
     width: float
     height: float
+
+
+    @property
+    def as_list(self) -> list:
+        return [self.x, self.y, self.width, self.height]
+
+
+    @property
+    def as_numpy(self) -> np.ndarray:
+        return np.array(self.as_list)
+    
+
+    @property
+    def as_tensor(self) -> torch.Tensor:
+        return torch.tensor(self.as_list)
+    
+
+    @property
+    def as_2d_tensor(self) -> torch.Tensor:
+        return self.as_tensor.unsqueeze(0)
+    
+    
+    def transform_to_img(self, img: ArrayLike) -> torch.Tensor:
+        bbox_gt = transform_bbox(img, self.as_numpy)
+        return torch.tensor(bbox_gt).unsqueeze(0)
 
 
 class Ball(BaseModel):
